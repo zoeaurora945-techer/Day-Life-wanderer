@@ -1,0 +1,18 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# Logs
+*.log
+
+# Env
+.env
+.env.local
+
+# Miniprogram dev artifacts
+miniprogram/node_modules/
+miniprogram/dist/
+
+# Keep directory placeholders
+!.gitkeep
