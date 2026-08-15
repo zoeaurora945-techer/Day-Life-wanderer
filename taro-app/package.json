@@ -1,0 +1,38 @@
+{
+  "name": "quadrant-review-miniprogram",
+  "version": "1.0.0",
+  "private": true,
+  "description": "四象限周复盘 · 人生主线 微信小程序（Taro 复用 Web 端核心逻辑）",
+  "scripts": {
+    "build:weapp": "taro build --type weapp",
+    "dev:weapp": "npm run build:weapp -- --watch"
+  },
+  "browserslist": [
+    "> 0.2%",
+    "not dead",
+    "not op_mini all"
+  ],
+  "dependencies": {
+    "@babel/runtime": "^7.21.0",
+    "@tarojs/components": "3.6.23",
+    "@tarojs/helper": "3.6.23",
+    "@tarojs/plugin-framework-react": "3.6.23",
+    "@tarojs/plugin-platform-weapp": "3.6.23",
+    "@tarojs/react": "3.6.23",
+    "@tarojs/runtime": "3.6.23",
+    "@tarojs/shared": "3.6.23",
+    "@tarojs/taro": "3.6.23",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "zustand": "^4.5.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.21.0",
+    "@tarojs/cli": "3.6.23",
+    "@tarojs/webpack5-runner": "3.6.23",
+    "babel-preset-taro": "3.6.23",
+    "typescript": "^4.7.0",
+    "@types/react": "^18.0.0",
+    "@types/webpack-env": "^1.18.0"
+  }
+}

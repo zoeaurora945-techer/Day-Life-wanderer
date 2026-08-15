@@ -14,5 +14,9 @@ Thumbs.db
 miniprogram/node_modules/
 miniprogram/dist/
 
+# Taro (微信小程序) build artifacts
+taro-app/node_modules/
+taro-app/dist/
+
 # Keep directory placeholders
 !.gitkeep
