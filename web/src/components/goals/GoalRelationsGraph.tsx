@@ -10,7 +10,7 @@
  */
 
 import type { FC } from 'react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import type { GraphEdge, Goal, Project } from '../../types/task'
 import { useTaskStore } from '../../store/useTaskStore'
 
@@ -321,21 +321,41 @@ export const GoalRelationsGraph: FC<GoalRelationsGraphProps> = ({
 
   const addGraphEdge = useTaskStore((state) => state.addGraphEdge)
 
-  const width = 800
-  const height = 260
+  const [dimensions, setDimensions] = useState({ width: 800, height: 420 })
+
+  // Observe container size for responsive graph fitting
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect
+        if (width > 0 && height > 0) {
+          setDimensions({
+            width: Math.max(Math.round(width), 400),
+            height: Math.max(Math.round(height), 300),
+          })
+        }
+      }
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const { nodes, edges, adjacency } = useMemo(
-    () => buildLayout(goals, projects, graphEdges, width, height),
-    [goals, projects, graphEdges, width, height],
+    () => buildLayout(goals, projects, graphEdges, dimensions.width, dimensions.height),
+    [goals, projects, graphEdges, dimensions.width, dimensions.height],
   )
 
   const hasData = nodes.length > 0 && edges.length > 0
 
   return (
-    <div className="relative w-full overflow-hidden rounded-lg bg-slate-950">
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden rounded-none bg-transparent">
       <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-64 w-full"
+        viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
+        className="absolute inset-0 h-full w-full"
         role="img"
         aria-label="Goals and projects relationship graph; hover to inspect, click two nodes to link goal and project."
       >
