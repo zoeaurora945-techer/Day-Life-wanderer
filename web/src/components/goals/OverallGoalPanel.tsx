@@ -322,8 +322,7 @@ export const OverallGoalPanel: FC = () => {
                       {goalCards.map(({ goal, goalTasks, total, done, fraction }) => (
                         <div
                           key={goal.id}
-                          group="group/goal"
-                          className="rounded-lg border border-slate-100 bg-white p-2.5 transition-colors hover:border-sky-200 hover:bg-sky-50/30"
+                          className="group/goal rounded-lg border border-slate-100 bg-white p-2.5 transition-colors hover:border-sky-200 hover:bg-sky-50/30"
                         >
                           <div className="mb-1.5 flex items-start justify-between gap-2">
                             <h4 className="min-w-0 line-clamp-1 text-xs font-semibold text-slate-800">
@@ -439,8 +438,7 @@ export const OverallGoalPanel: FC = () => {
                           return (
                             <div
                               key={project.id}
-                              group="group/proj"
-                              className={`flex items-center gap-2 rounded-lg border p-2 transition-colors ${
+                              className={`group/proj flex items-center gap-2 rounded-lg border p-2 transition-colors ${
                                 isCompleted
                                   ? 'border-slate-200 bg-slate-50 opacity-70'
                                   : 'border-emerald-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/20'

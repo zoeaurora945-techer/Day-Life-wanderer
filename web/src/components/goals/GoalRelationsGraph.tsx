@@ -322,6 +322,7 @@ export const GoalRelationsGraph: FC<GoalRelationsGraphProps> = ({
   const addGraphEdge = useTaskStore((state) => state.addGraphEdge)
 
   const [dimensions, setDimensions] = useState({ width: 800, height: 420 })
+  const { width, height } = dimensions
 
   // Observe container size for responsive graph fitting
   const containerRef = useRef<HTMLDivElement>(null)
