@@ -47,6 +47,9 @@ export const QuadrantTaskItem: FC<QuadrantTaskItemProps> = ({
   onToggleDone,
   onEdit,
   onDelete,
+  taskQuadrant,
+  quadrantBg,
+  quadrantBorder,
 }) => {
   const due = new Date(task.dueAt)
 
