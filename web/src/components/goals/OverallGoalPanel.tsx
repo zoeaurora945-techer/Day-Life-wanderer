@@ -1,19 +1,13 @@
 /**
  * @file OverallGoalPanel component.
- * @description Overall (Tab4) dashboard view — dual-column layout:
- *   LEFT  (scrollable): Goals, Projects, Links management
- *   RIGHT (fixed hero): Relationship graph + quick stats
- *
- * Design principles (Impeccable):
- * - Graph as visual hero — always in viewport, largest element
- * - Progressive disclosure — create forms collapsed by default
- * - Spatial rhythm — tight intra-group (8-12px), generous inter-group (24-32px)
- * - Visual hierarchy — size + weight + space combined (3 dimensions)
+ * @description Overall (Tab4) dashboard view — left: relationship graph (hero),
+ * right: management + selection detail panel. Clicking a node in the graph
+ * selects it and the right panel shows its detail (linked to the same entity).
  */
 
 import type { FC } from 'react'
 import { useMemo, useState } from 'react'
-import type { GraphEdge, Goal, Task } from '../../types/task'
+import type { GraphEdge, Goal, Project, Task } from '../../types/task'
 import { useTaskStore } from '../../store/useTaskStore'
 import { GoalRelationsGraph } from './GoalRelationsGraph'
 
@@ -106,21 +100,105 @@ const SectionHeader: FC<{
 }
 
 /**
- * @description Overall dashboard — Goals, Projects, Graph in a dual-column layout.
+ * @description Detail card for the currently-selected node (goal or project).
+ */
+const SelectedCard: FC<{
+  entity: { type: 'goal' | 'project'; id: string }
+  goals: Goal[]
+  projects: Project[]
+  tasks: Task[]
+  edges: GraphEdge[]
+  onDelete: (type: 'goal' | 'project', id: string) => void
+  onUpdateProject: (id: string, patch: Partial<Project>) => void
+}> = ({ entity, goals, projects, tasks, edges, onDelete, onUpdateProject }) => {
+  if (entity.type === 'goal') {
+    const goal = goals.find((g) => g.id === entity.id)
+    if (!goal) return null
+    const goalTasks = getTasksForGoal(tasks, edges, goal.id)
+    const total = goalTasks.length
+    const done = goalTasks.filter((t) => t.status === 'done').length
+    const fraction = total === 0 ? null : done / total
+    const pct = fraction === null ? '—' : `${Math.round(fraction * 100)}%`
+    return (
+      <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🌟</span>
+            <span className="text-sm font-semibold text-sky-900">{goal.title}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => onDelete('goal', goal.id)}
+            className="text-[10px] font-medium text-red-500 hover:text-red-600"
+          >
+            Delete
+          </button>
+        </div>
+        <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">恒星 · Goal</span>
+          <span>{done}/{total} 关联任务 · {pct}</span>
+        </div>
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+          <div className="h-full rounded-full bg-sky-500" style={{ width: pct === '—' ? '0%' : pct }} />
+        </div>
+      </div>
+    )
+  }
+
+  const project = projects.find((p) => p.id === entity.id)
+  if (!project) return null
+  const parentGoal = project.goalId ? goals.find((g) => g.id === project.goalId) : null
+  const linkedTaskCount = edges.filter(
+    (e) =>
+      (e.fromType === 'project' && e.fromId === project.id && e.toType === 'task') ||
+      (e.toType === 'project' && e.toId === project.id && e.fromType === 'task'),
+  ).length
+  const status = project.status ?? 'active'
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-base">🛰️</span>
+          <span className="text-sm font-semibold text-emerald-900">{project.title}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onDelete('project', project.id)}
+          className="text-[10px] font-medium text-red-500 hover:text-red-600"
+        >
+          Del
+        </button>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">小行星 · Project</span>
+        {parentGoal ? (
+          <span className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-700">⭐ {parentGoal.title}</span>
+        ) : (
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">无归属 Goal</span>
+        )}
+        <span>{linkedTaskCount} tasks</span>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-[11px] text-slate-500">状态</span>
+        <select
+          className="h-6 rounded border border-emerald-200 bg-white px-1.5 text-[11px] focus:outline-none"
+          value={status}
+          onChange={(e) => onUpdateProject(project.id, { status: e.target.value as Project['status'] })}
+        >
+          <option value="active">Active</option>
+          <option value="paused">Paused</option>
+          <option value="completed">Done</option>
+        </select>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * @description Overall dashboard — Left: relationship graph; Right: management + selection detail.
  *
- * Layout (desktop, >= 1024px):
- * ┌────────────────────────┬──────────────────┐
- * │  Top bar (full width)  │                  │
- * ├────────────────────────┤  RIGHT PANEL     │
- * │  LEFT (scrollable)     │  ┌────────────┐  │
- * │  · Add Goal            │  │  GRAPH      │  │
- * │  · Goal Cards (2-col)  │  │  (hero)     │  │
- * │  · Projects (compact)  │  ├────────────┤  │
- * │  · Links (compact)     │  │  Quick Stats│  │
- * │                        │  └────────────┘  │
- * └────────────────────────┴──────────────────┘
- *
- * Layout (mobile, < 1024px): Single column, graph first (order: -1).
+ * Layout (desktop, >= 1024px): graph on the left (1fr), management panel on the right (1fr).
+ * Clicking a node in the graph selects it; the right panel shows its detail (linked).
  */
 export const OverallGoalPanel: FC = () => {
   const {
@@ -147,6 +225,7 @@ export const OverallGoalPanel: FC = () => {
 
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [selectedGoalId, setSelectedGoalId] = useState('')
+  const [selectedEntity, setSelectedEntity] = useState<{ type: 'goal' | 'project'; id: string } | null>(null)
   const [relation, setRelation] =
     useState<GraphEdge['relation']>('supports')
 
@@ -196,6 +275,23 @@ export const OverallGoalPanel: FC = () => {
       toId: selectedGoalId,
       relation,
     })
+  }
+
+  const handleNodeClick = (payload: { type: 'goal' | 'project'; id: string }) => {
+    // Selection for the detail panel
+    setSelectedEntity(payload)
+    // Keep existing dropdown behaviour too
+    if (payload.type === 'project') {
+      setSelectedProjectId(payload.id)
+    } else {
+      setSelectedGoalId(payload.id)
+    }
+  }
+
+  const handleDeleteEntity = (type: 'goal' | 'project', id: string) => {
+    if (type === 'goal') deleteGoal(id)
+    else deleteProject(id)
+    setSelectedEntity(null)
   }
 
   /* ---- Derived data ---- */
@@ -265,7 +361,7 @@ export const OverallGoalPanel: FC = () => {
 
   return (
     <section className="flex h-full flex-col gap-0 overflow-hidden rounded-xl border border-slate-200 bg-white/90 shadow-sm">
-      {/* ===== TOP BAR: Title + Global Progress (compact single row) ===== */}
+      {/* ===== TOP BAR ===== */}
       <header className="flex flex-shrink-0 items-center gap-4 border-b border-slate-100 px-4 py-2.5">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-slate-900">Overall</h2>
@@ -273,16 +369,57 @@ export const OverallGoalPanel: FC = () => {
         </div>
         <div className="h-6 w-px bg-slate-200" />
         <ProgressBar fraction={overallProgress} label="All linked tasks" />
+        <div className="flex-1" />
+        <div className="flex items-center gap-3 text-[11px] text-slate-500">
+          <span>{goals.length} Goals</span>
+          <span>{projects.length} Projects</span>
+          <span>{linkEntries.length} Links</span>
+        </div>
       </header>
 
-      {/* ===== MAIN DASHBOARD GRID ===== */}
-      <div className="flex min-h-0 flex-1 gap-0 lg:grid lg:grid-cols-[1fr_340px] lg:gap-0">
+      {/* ===== MAIN GRID: LEFT graph (1fr) | RIGHT panel (1fr) ===== */}
+      <div className="flex min-h-0 flex-1 lg:grid lg:grid-cols-2">
 
-        {/* -------- LEFT PANEL: Management (scrollable) -------- */}
-        <div className="flex min-h-0 flex-col overflow-y-auto overflow-x-hidden px-4 py-3 lg:max-w-none">
+        {/* -------- LEFT PANEL: Graph (hero) -------- */}
+        <div className="relative min-h-0 border-b border-slate-200 bg-slate-950 lg:border-b-0 lg:border-r">
+          <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-slate-950 via-slate-950/80 to-transparent px-3 pt-2.5 pb-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-200">
+              Life Graph
+            </h3>
+            <p className="mt-0.5 text-[10px] text-slate-500">
+              点击节点查看详情 · 点两个节点连线
+            </p>
+          </div>
+          <GoalRelationsGraph
+            goals={goals}
+            projects={projects}
+            graphEdges={graphEdges}
+            onNodeClick={handleNodeClick}
+          />
+        </div>
+
+        {/* -------- RIGHT PANEL: Selection detail + Management (scrollable) -------- */}
+        <div className="flex min-h-0 flex-col overflow-y-auto overflow-x-hidden px-4 py-3">
           <div className="flex flex-col gap-3">
 
-            {/* --- ADD GOAL (compact inline) --- */}
+            {/* Selection detail (linked to the graph) */}
+            {selectedEntity ? (
+              <SelectedCard
+                entity={selectedEntity}
+                goals={goals}
+                projects={projects}
+                tasks={tasks}
+                edges={graphEdges}
+                onDelete={handleDeleteEntity}
+                onUpdateProject={updateProject}
+              />
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-200 px-3 py-3 text-center text-[11px] text-slate-400">
+                点击左侧星图里的节点，这里会显示它的详情与状态 ✨
+              </div>
+            )}
+
+            {/* --- ADD GOAL --- */}
             <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-2.5">
               <div className="flex items-center gap-2">
                 <input
@@ -302,7 +439,7 @@ export const OverallGoalPanel: FC = () => {
               </div>
             </div>
 
-            {/* --- GOALS SECTION (collapsible) --- */}
+            {/* --- GOALS SECTION --- */}
             <div className="overflow-hidden rounded-lg border border-slate-200">
               <SectionHeader
                 title="Goals"
@@ -322,7 +459,8 @@ export const OverallGoalPanel: FC = () => {
                       {goalCards.map(({ goal, goalTasks, total, done, fraction }) => (
                         <div
                           key={goal.id}
-                          className="group/goal rounded-lg border border-slate-100 bg-white p-2.5 transition-colors hover:border-sky-200 hover:bg-sky-50/30"
+                          onClick={() => setSelectedEntity({ type: 'goal', id: goal.id })}
+                          className="group/goal cursor-pointer rounded-lg border border-slate-100 bg-white p-2.5 transition-colors hover:border-sky-200 hover:bg-sky-50/30"
                         >
                           <div className="mb-1.5 flex items-start justify-between gap-2">
                             <h4 className="min-w-0 line-clamp-1 text-xs font-semibold text-slate-800">
@@ -330,7 +468,7 @@ export const OverallGoalPanel: FC = () => {
                             </h4>
                             <button
                               type="button"
-                              onClick={() => deleteGoal(goal.id)}
+                              onClick={(e) => { e.stopPropagation(); deleteGoal(goal.id) }}
                               className="shrink-0 text-[10px] font-medium text-red-500 opacity-0 transition-opacity group-hover/goal:opacity-100 hover:text-red-600"
                             >
                               Delete
@@ -352,7 +490,7 @@ export const OverallGoalPanel: FC = () => {
               )}
             </div>
 
-            {/* --- PROJECTS SECTION (collapsible, compact form) --- */}
+            {/* --- PROJECTS SECTION --- */}
             <div className="overflow-hidden rounded-lg border border-emerald-200">
               <SectionHeader
                 title="Projects"
@@ -363,7 +501,6 @@ export const OverallGoalPanel: FC = () => {
               />
               {projectsExpanded && (
                 <div className="border-t border-emerald-100 p-2.5 space-y-2.5">
-                  {/* Compact create form */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <input
@@ -400,7 +537,6 @@ export const OverallGoalPanel: FC = () => {
                       </button>
                     </div>
 
-                    {/* Expandable date fields */}
                     {showProjectDates && (
                       <div className="flex items-center gap-2 rounded-md bg-emerald-50/50 px-2 py-1.5 animate-in fade-in slide-in-from-top-1">
                         <div className="flex items-center gap-1">
@@ -425,7 +561,6 @@ export const OverallGoalPanel: FC = () => {
                     )}
                   </div>
 
-                  {/* Project cards */}
                   {projectCards.length === 0 ? (
                     <div className="rounded-md border border-dashed border-emerald-200 bg-emerald-50/30 px-3 py-3 text-center text-[11px] text-emerald-600">
                       No projects yet. Create one to bridge goals and daily tasks.
@@ -438,7 +573,8 @@ export const OverallGoalPanel: FC = () => {
                           return (
                             <div
                               key={project.id}
-                              className={`group/proj flex items-center gap-2 rounded-lg border p-2 transition-colors ${
+                              onClick={() => setSelectedEntity({ type: 'project', id: project.id })}
+                              className={`group/proj flex cursor-pointer items-center gap-2 rounded-lg border p-2 transition-colors ${
                                 isCompleted
                                   ? 'border-slate-200 bg-slate-50 opacity-70'
                                   : 'border-emerald-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/20'
@@ -464,6 +600,7 @@ export const OverallGoalPanel: FC = () => {
                                   <select
                                     className="h-4 rounded border border-slate-200 bg-transparent px-1 py-0 text-[9px] focus:outline-none"
                                     value={effectiveStatus}
+                                    onClick={(e) => e.stopPropagation()}
                                     onChange={(e) =>
                                       updateProject(project.id, {
                                         status: e.target.value as 'active' | 'paused' | 'completed',
@@ -478,7 +615,7 @@ export const OverallGoalPanel: FC = () => {
                               </div>
                               <button
                                 type="button"
-                                onClick={() => deleteProject(project.id)}
+                                onClick={(e) => { e.stopPropagation(); deleteProject(project.id) }}
                                 className="shrink-0 text-[10px] font-medium text-red-500 opacity-0 transition-opacity group-hover/proj:opacity-100"
                               >
                                 Del
@@ -493,7 +630,7 @@ export const OverallGoalPanel: FC = () => {
               )}
             </div>
 
-            {/* --- LINKS SECTION (compact) --- */}
+            {/* --- LINKS SECTION --- */}
             <div className="overflow-hidden rounded-lg border border-slate-200">
               <SectionHeader
                 title="Links"
@@ -504,7 +641,6 @@ export const OverallGoalPanel: FC = () => {
               />
               {linksExpanded && (
                 <div className="border-t border-slate-100 p-2.5 space-y-2">
-                  {/* Compact link form */}
                   <div className="flex flex-wrap items-center gap-1.5">
                     <select
                       className="max-w-[120px] rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs"
@@ -520,7 +656,7 @@ export const OverallGoalPanel: FC = () => {
                     <select
                       className="max-w-[120px] rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs"
                       value={selectedGoalId}
-                      onChange={(e) => setSelectedGoalId(e.target.value)}
+                      onChange={( `e) => setSelectedGoalId(e.target.value)`}
                     >
                       <option value="">Goal…</option>
                       {goals.map((g) => (
@@ -546,9 +682,8 @@ export const OverallGoalPanel: FC = () => {
                     </button>
                   </div>
 
-                  {/* Existing links list */}
                   {linkEntries.length === 0 ? (
-                    <div className="rounded-md border border-dashed border-slate-150 px-2 py-2 text-center text-[10px] text-slate-400">
+                    <div className="rounded-md border border-dashed border-slate-200 px-2 py-2 text-center text-[10px] text-slate-400">
                       No links yet. Connect projects to goals above.
                     </div>
                   ) : (
@@ -579,68 +714,10 @@ export const OverallGoalPanel: FC = () => {
             </div>
 
           </div>
-          {/* Bottom padding for scroll breathing room */}
           <div className="h-8 flex-shrink-0" />
-        </div>
-
-        {/* -------- RIGHT PANEL: Hero Graph + Stats (fixed, desktop only) -------- */}
-        <div className="hidden flex-col border-l border-slate-200 bg-slate-950 lg:flex">
-          {/* Relationship Graph — HERO */}
-          <div className="relative min-h-0 flex-1 overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-slate-950 via-slate-950/80 to-transparent px-3 pt-2.5 pb-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-200">
-                Life Graph
-              </h3>
-              <p className="mt-0.5 text-[10px] text-slate-500">
-                Click nodes to quick-link &middot; Hover to inspect
-              </p>
-            </div>
-            <GoalRelationsGraph
-              goals={goals}
-              projects={projects}
-              graphEdges={graphEdges}
-              onNodeClick={({ type, id }) => {
-                if (type === 'project') {
-                  setSelectedProjectId(id)
-                } else {
-                  setSelectedGoalId(id)
-                }
-              }}
-            />
-          </div>
-
-          {/* Quick Stats Bar */}
-          <div className="flex flex-shrink-0 items-center gap-0 border-t border-slate-800 bg-slate-900/50 px-3 py-2">
-            <StatBadge label="Goals" value={goals.length} color="sky" />
-            <div className="w-px h-4 bg-slate-700" />
-            <StatBadge label="Projects" value={projects.length} color="emerald" />
-            <div className="w-px h-4 bg-slate-700" />
-            <StatBadge label="Links" value={linkEntries.length} color="slate" />
-            <div className="flex-1" />
-            <span className="text-[9px] text-slate-600">
-              {tasks.filter(t => t.status === 'todo').length} open tasks
-            </span>
-          </div>
         </div>
 
       </div>
     </section>
-  )
-}
-
-/** Tiny stat badge for the bottom bar. */
-const StatBadge: FC<{ label: string; value: number; color: 'sky' | 'emerald' | 'slate' }> = ({
-  label, value, color,
-}) => {
-  const colors = {
-    sky: 'text-sky-300',
-    emerald: 'text-emerald-300',
-    slate: 'text-slate-300',
-  }
-  return (
-    <div className="text-center">
-      <div className={`text-sm font-semibold tabular-nums ${colors[color]}`}>{value}</div>
-      <div className="text-[8px] text-slate-600 leading-none">{label}</div>
-    </div>
   )
 }
