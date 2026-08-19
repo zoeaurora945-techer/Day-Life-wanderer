@@ -656,7 +656,7 @@ export const OverallGoalPanel: FC = () => {
                     <select
                       className="max-w-[120px] rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs"
                       value={selectedGoalId}
-                      onChange={( `e) => setSelectedGoalId(e.target.value)`}
+                      onChange={(e) => setSelectedGoalId(e.target.value)}
                     >
                       <option value="">Goal…</option>
                       {goals.map((g) => (
