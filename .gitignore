@@ -1,0 +1,22 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# Logs
+*.log
+
+# Env
+.env
+.env.local
+
+# Miniprogram dev artifacts
+miniprogram/node_modules/
+miniprogram/dist/
+
+# Taro (微信小程序) build artifacts
+taro-app/node_modules/
+taro-app/dist/
+
+# Keep directory placeholders
+!.gitkeep
