@@ -1,14 +1,23 @@
 /**
  * @file Task and weekly review store using Zustand.
- * @description Central state management for tasks, goals, projects, graph edges, weekly reviews, and app meta, with persistence and daily rollover.
+ * @description Central state management for tasks, goals, projects, graph edges, daily logs, weekly reviews, and app meta, with persistence and daily rollover.
+ *
+ * @changelog (v2 / 锚点小程序 MVP)
+ * - STORAGE_KEY upgraded v1 → v2 ('anchor-app-state-v2'); old key kept as rollback.
+ * - Added DailyLog persistence + addDailyLog(text) (calls rule parser → creates tasks).
+ * - Task.status extended to three states; setTaskState(id, state) added.
+ * - Goal auto-archive (30d inactivity) via autoArchiveCheck inside initializeForToday.
+ * - buildState() helper centralises nextState construction so dailyLogs is never dropped.
  */
 
 import { create } from 'zustand'
 import type {
   AppMeta,
+  DailyLog,
   GraphEdge,
   Goal,
   Project,
+  Status,
   Task,
   WeeklyReview,
   WeeklyReviewActionItem,
@@ -20,10 +29,10 @@ import {
   isDateKeyBefore,
   roundToNearest10Minutes,
 } from '../utils/dateUtils'
+import { parseInput } from '../shared/ai/ruleParser'
 
 /**
  * @description Simple ID generator to avoid external dependencies like nanoid.
- * Uses crypto.randomUUID when available, otherwise falls back to Math.random.
  */
 function generateId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -32,6 +41,9 @@ function generateId(): string {
   }
   return Math.random().toString(36).slice(2, 10)
 }
+
+const STORAGE_KEY = 'anchor-app-state-v2'
+const OLD_STORAGE_KEY = 'quadrant-task-app-state-v1'
 
 /**
  * @description Persisted application state shape.
@@ -43,6 +55,7 @@ interface PersistedState {
   goals: Goal[]
   projects: Project[]
   graphEdges: GraphEdge[]
+  dailyLogs: DailyLog[]
 }
 
 /**
@@ -54,7 +67,10 @@ interface TaskStore extends PersistedState {
   addTask: (task: Omit<Task, 'id' | 'createdAt' | 'doneAt'>) => string
   updateTask: (id: string, patch: Partial<Task>) => void
   toggleTaskStatus: (id: string) => void
+  setTaskState: (id: string, state: Status) => void
   deleteTask: (id: string) => void
+
+  addDailyLog: (text: string) => DailyLog | null
 
   upsertWeeklyReview: (weekStartDate: string, weekEndDate: string) => WeeklyReview
   updateWeeklyReview: (id: string, patch: Partial<WeeklyReview>) => void
@@ -70,25 +86,46 @@ interface TaskStore extends PersistedState {
   addGoal: (payload: Omit<Goal, 'id' | 'createdAt'>) => string
   updateGoal: (id: string, patch: Partial<Goal>) => void
   deleteGoal: (id: string) => void
+  archiveGoal: (id: string) => void
 
   addProject: (payload: Omit<Project, 'id' | 'createdAt'>) => string
   updateProject: (id: string, patch: Partial<Project>) => void
   deleteProject: (id: string) => void
 
-  /**
-   * @description Sets or clears the primary project for a task by managing task↔project graph edges.
-   * Passing null as projectId will remove all project relations for the given task.
-   */
   setTaskProject: (taskId: string, projectId: string | null) => void
 
   addGraphEdge: (payload: Omit<GraphEdge, 'id' | 'createdAt'>) => string
   deleteGraphEdge: (id: string) => void
 }
 
-const STORAGE_KEY = 'quadrant-task-app-state-v1'
+/**
+ * @description Builds the next persisted state from the current store, guaranteeing
+ * every PersistedState field (incl. dailyLogs) is carried forward unless overridden.
+ */
+function buildState(get: () => TaskStore, override: Partial<PersistedState>): PersistedState {
+  const s = get()
+  return {
+    tasks: s.tasks,
+    weeklyReviews: s.weeklyReviews,
+    meta: s.meta,
+    goals: s.goals,
+    projects: s.projects,
+    graphEdges: s.graphEdges,
+    dailyLogs: s.dailyLogs,
+    ...override,
+  }
+}
 
 /**
- * @description Normalises tasks loaded from storage to ensure urgent fields exist.
+ * @description Persists and applies the next state.
+ */
+function persistAndSet(get: () => TaskStore, set: (s: PersistedState) => void, state: PersistedState): void {
+  persistState(state)
+  set(state)
+}
+
+/**
+ * @description Normalises tasks loaded from storage to ensure urgent + v2 fields exist.
  */
 function normalizeTasks(raw: unknown): Task[] {
   if (!Array.isArray(raw)) return []
@@ -97,18 +134,58 @@ function normalizeTasks(raw: unknown): Task[] {
     const urgentMode = base.urgentMode === 'manual' ? 'manual' : 'auto'
     const urgentManual =
       'urgentManual' in base ? ((base.urgentManual as boolean | null) ?? null) : null
-
     const task: Task = {
       ...base,
       urgentMode,
       urgentManual,
+      servesGoal: base.servesGoal ?? false,
+      sourceLogId: base.sourceLogId ?? null,
     }
     return task
   })
 }
 
 /**
- * @description Loads persisted state from localStorage, or returns an empty default.
+ * @description Normalises a v2 payload from storage.
+ */
+function normalizeV2(parsed: any): PersistedState {
+  return {
+    tasks: normalizeTasks(parsed.tasks),
+    weeklyReviews: Array.isArray(parsed.weeklyReviews) ? parsed.weeklyReviews : [],
+    meta: parsed.meta ?? {},
+    goals: Array.isArray(parsed.goals)
+      ? parsed.goals.map((g: any) => ({ ...g, status: g.status ?? 'active', lastActiveAt: g.lastActiveAt ?? g.createdAt }))
+      : [],
+    projects: Array.isArray(parsed.projects)
+      ? parsed.projects.map((p: any) => ({ ...p, status: p.status ?? 'active', lastActiveAt: p.lastActiveAt ?? p.createdAt }))
+      : [],
+    graphEdges: Array.isArray(parsed.graphEdges) ? parsed.graphEdges : [],
+    dailyLogs: Array.isArray(parsed.dailyLogs) ? parsed.dailyLogs : [],
+  }
+}
+
+/**
+ * @description Migrates an old v1 payload (quadrant-task-app-state-v1) into v2 shape.
+ * Old key is preserved on disk as a rollback copy.
+ */
+function migrateV1ToV2(raw: any): PersistedState {
+  return {
+    tasks: normalizeTasks(raw.tasks),
+    weeklyReviews: Array.isArray(raw.weeklyReviews) ? raw.weeklyReviews : [],
+    meta: raw.meta ?? {},
+    goals: Array.isArray(raw.goals)
+      ? raw.goals.map((g: any) => ({ ...g, status: 'active', lastActiveAt: g.createdAt }))
+      : [],
+    projects: Array.isArray(raw.projects)
+      ? raw.projects.map((p: any) => ({ ...p, status: p.status ?? 'active', lastActiveAt: p.createdAt }))
+      : [],
+    graphEdges: Array.isArray(raw.graphEdges) ? raw.graphEdges : [],
+    dailyLogs: [],
+  }
+}
+
+/**
+ * @description Loads persisted state: v2 first, then v1 migration, then empty.
  */
 function loadInitialState(): PersistedState {
   const empty: PersistedState = {
@@ -118,22 +195,15 @@ function loadInitialState(): PersistedState {
     goals: [],
     projects: [],
     graphEdges: [],
+    dailyLogs: [],
   }
-  if (typeof window === 'undefined') {
-    return empty
-  }
+  if (typeof window === 'undefined') return empty
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return empty
-    const parsed = JSON.parse(raw) as Partial<PersistedState>
-    return {
-      tasks: normalizeTasks(parsed.tasks),
-      weeklyReviews: parsed.weeklyReviews ?? [],
-      meta: parsed.meta ?? {},
-      goals: Array.isArray(parsed.goals) ? (parsed.goals as Goal[]) : [],
-      projects: Array.isArray(parsed.projects) ? (parsed.projects as Project[]) : [],
-      graphEdges: Array.isArray(parsed.graphEdges) ? (parsed.graphEdges as GraphEdge[]) : [],
-    }
+    const rawV2 = window.localStorage.getItem(STORAGE_KEY)
+    if (rawV2) return normalizeV2(JSON.parse(rawV2))
+    const rawV1 = window.localStorage.getItem(OLD_STORAGE_KEY)
+    if (rawV1) return migrateV1ToV2(JSON.parse(rawV1))
+    return empty
   } catch {
     return empty
   }
@@ -152,6 +222,7 @@ function persistState(state: PersistedState): void {
       goals: state.goals,
       projects: state.projects,
       graphEdges: state.graphEdges,
+      dailyLogs: state.dailyLogs,
     }
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
   } catch {
@@ -160,8 +231,61 @@ function persistState(state: PersistedState): void {
 }
 
 /**
- * @description Applies daily rollover (顺延革新) to todo tasks based on today's date key,
- * combining today's date with original time and re-quantizing to 10-minute granularity.
+ * @description Computes the last activity timestamp of a goal from its child projects/tasks.
+ */
+function computeGoalLastActive(
+  goalId: string,
+  goals: Goal[],
+  projects: Project[],
+  tasks: Task[],
+  edges: GraphEdge[],
+): string | undefined {
+  const goalProjects = projects.filter((p) => p.goalId === goalId)
+  let maxTs = 0
+  for (const p of goalProjects) {
+    const pTs = p.createdAt ? new Date(p.createdAt).getTime() : 0
+    if (pTs > maxTs) maxTs = pTs
+    const taskIds = edges
+      .filter(
+        (e) =>
+          (e.fromType === 'project' && e.fromId === p.id && e.toType === 'task') ||
+          (e.toType === 'project' && e.toId === p.id && e.fromType === 'task'),
+      )
+      .map((e) => (e.fromType === 'task' ? e.fromId : e.toId))
+    for (const tid of taskIds) {
+      const t = tasks.find((x) => x.id === tid)
+      if (t) {
+        const ts = t.createdAt ? new Date(t.createdAt).getTime() : 0
+        if (ts > maxTs) maxTs = ts
+      }
+    }
+  }
+  if (maxTs === 0) {
+    const g = goals.find((x) => x.id === goalId)
+    return g?.createdAt
+  }
+  return new Date(maxTs).toISOString()
+}
+
+/**
+ * @description Auto-archives goals with no activity for 30+ days.
+ */
+function runAutoArchive(goals: Goal[], projects: Project[], tasks: Task[], edges: GraphEdge[]): Goal[] {
+  const now = Date.now()
+  const THIRTY_DAYS = 30 * 86400000
+  return goals.map((g) => {
+    if (g.status === 'archived') return g
+    const last = computeGoalLastActive(g.id, goals, projects, tasks, edges)
+    const lastTs = last ? new Date(last).getTime() : 0
+    if (lastTs > 0 && now - lastTs > THIRTY_DAYS) {
+      return { ...g, status: 'archived', lastActiveAt: last }
+    }
+    return { ...g, lastActiveAt: last ?? g.lastActiveAt }
+  })
+}
+
+/**
+ * @description Applies daily rollover (顺延革新) to todo tasks based on today's date key.
  */
 function applyDailyRollover(tasks: Task[], todayKey: string): Task[] {
   return tasks.map((task) => {
@@ -177,7 +301,7 @@ function applyDailyRollover(tasks: Task[], todayKey: string): Task[] {
 }
 
 /**
- * @description Creates the main task store with business logic for tasks, goals, projects, graph edges and weekly reviews.
+ * @description Creates the main task store with business logic.
  */
 export const useTaskStore = create<TaskStore>((set, get) => {
   const initial = loadInitialState()
@@ -187,23 +311,19 @@ export const useTaskStore = create<TaskStore>((set, get) => {
 
     initializeForToday: (now: Date) => {
       const todayKey = formatDateKey(now)
-      const { meta, tasks, weeklyReviews, goals, projects, graphEdges } = get()
-      if (meta.lastOpenDate === todayKey) return
-      const rolled = applyDailyRollover(tasks, todayKey)
-      const nextState: PersistedState = {
+      const s = get()
+      if (s.meta.lastOpenDate === todayKey) return
+      const rolled = applyDailyRollover(s.tasks, todayKey)
+      const archivedGoals = runAutoArchive(s.goals, s.projects, rolled, s.graphEdges)
+      const nextState = buildState(get, {
         tasks: rolled,
-        weeklyReviews,
-        meta: { ...meta, lastOpenDate: todayKey },
-        goals,
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+        goals: archivedGoals,
+        meta: { ...s.meta, lastOpenDate: todayKey },
+      })
+      persistAndSet(get, set, nextState)
     },
 
     addTask: (payload) => {
-      const { tasks, weeklyReviews, meta, goals, projects, graphEdges } = get()
       const now = new Date()
       const roundedDue = roundToNearest10Minutes(new Date(payload.dueAt))
       const newTask: Task = {
@@ -213,65 +333,48 @@ export const useTaskStore = create<TaskStore>((set, get) => {
         dueAt: roundedDue.toISOString(),
         doneAt: null,
       }
-      const nextState: PersistedState = {
-        tasks: [...tasks, newTask],
-        weeklyReviews,
-        meta,
-        goals,
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      const nextState = buildState(get, { tasks: [...get().tasks, newTask] })
+      persistAndSet(get, set, nextState)
       return newTask.id
     },
 
     updateTask: (id, patch) => {
-      const { tasks, weeklyReviews, meta, goals, projects, graphEdges } = get()
+      const { tasks } = get()
       const normalizedPatch: Partial<Task> = { ...patch }
-
       if (patch.dueAt) {
         const rounded = roundToNearest10Minutes(new Date(patch.dueAt))
         normalizedPatch.dueAt = rounded.toISOString()
       }
-
       const nextTasks = tasks.map((t) => (t.id === id ? { ...t, ...normalizedPatch } : t))
-      const nextState: PersistedState = {
-        tasks: nextTasks,
-        weeklyReviews,
-        meta,
-        goals,
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { tasks: nextTasks }))
     },
 
     toggleTaskStatus: (id) => {
-      const { tasks, weeklyReviews, meta, goals, projects, graphEdges } = get()
+      const { tasks } = get()
       const nowIso = new Date().toISOString()
       const nextTasks = tasks.map((t) => {
         if (t.id !== id) return t
-        if (t.status === 'todo') {
-          return { ...t, status: 'done', doneAt: nowIso }
-        }
-        return { ...t, status: 'todo', doneAt: null }
+        if (t.status === 'done') return { ...t, status: 'todo', doneAt: null }
+        return { ...t, status: 'done', doneAt: nowIso }
       })
-      const nextState: PersistedState = {
-        tasks: nextTasks,
-        weeklyReviews,
-        meta,
-        goals,
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { tasks: nextTasks }))
+    },
+
+    setTaskState: (id, state) => {
+      const { tasks } = get()
+      const nextTasks = tasks.map((t) => {
+        if (t.id !== id) return t
+        return {
+          ...t,
+          status: state,
+          doneAt: state === 'done' ? new Date().toISOString() : null,
+        }
+      })
+      persistAndSet(get, set, buildState(get, { tasks: nextTasks }))
     },
 
     deleteTask: (id) => {
-      const { tasks, weeklyReviews, meta, goals, projects, graphEdges } = get()
+      const { tasks, graphEdges } = get()
       const nextTasks = tasks.filter((t) => t.id !== id)
       const nextEdges = graphEdges.filter(
         (e) =>
@@ -280,25 +383,57 @@ export const useTaskStore = create<TaskStore>((set, get) => {
             (e.toType === 'task' && e.toId === id)
           ),
       )
-      const nextState: PersistedState = {
-        tasks: nextTasks,
-        weeklyReviews,
-        meta,
-        goals,
-        projects,
-        graphEdges: nextEdges,
+      persistAndSet(get, set, buildState(get, { tasks: nextTasks, graphEdges: nextEdges }))
+    },
+
+    addDailyLog: (text) => {
+      const trimmed = (text || '').trim()
+      if (!trimmed) return null
+      const { projects, goals } = get()
+      const result = parseInput(trimmed, { projects, goals })
+      const createdTaskIds: string[] = []
+      for (const pt of result.tasks) {
+        const id = get().addTask({
+          title: pt.title,
+          importance: pt.importance,
+          category: pt.category,
+          status: 'todo',
+          dueAt: pt.dueAt,
+          notes: pt.notes ?? '',
+          urgentMode: 'auto',
+          urgentManual: null,
+          servesGoal: pt.servesGoal,
+          sourceLogId: null,
+        })
+        createdTaskIds.push(id)
+        if (pt.projectId) get().setTaskProject(id, pt.projectId)
       }
-      persistState(nextState)
-      set(nextState)
+      const now = new Date()
+      const log: DailyLog = {
+        id: generateId(),
+        userText: trimmed,
+        audioUrl: null,
+        parsedTaskIds: createdTaskIds,
+        createdAt: now.toISOString(),
+      }
+      const s = get()
+      const tasksWithSource = s.tasks.map((t) =>
+        createdTaskIds.includes(t.id) ? { ...t, sourceLogId: log.id } : t,
+      )
+      const nextState = buildState(get, {
+        tasks: tasksWithSource,
+        dailyLogs: [...s.dailyLogs, log],
+      })
+      persistAndSet(get, set, nextState)
+      return log
     },
 
     upsertWeeklyReview: (weekStartDate, weekEndDate) => {
-      const { weeklyReviews, tasks, meta, goals, projects, graphEdges } = get()
+      const { weeklyReviews } = get()
       const existing = weeklyReviews.find(
         (r) => r.weekStartDate === weekStartDate && r.weekEndDate === weekEndDate,
       )
       if (existing) return existing
-
       const review: WeeklyReview = {
         id: generateId(),
         weekStartDate,
@@ -307,37 +442,18 @@ export const useTaskStore = create<TaskStore>((set, get) => {
         blockers: '',
         nextActions: [],
       }
-      const nextWeekly = [...weeklyReviews, review]
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews: nextWeekly,
-        meta,
-        goals,
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { weeklyReviews: [...get().weeklyReviews, review] }))
       return review
     },
 
     updateWeeklyReview: (id, patch) => {
-      const { weeklyReviews, tasks, meta, goals, projects, graphEdges } = get()
+      const { weeklyReviews } = get()
       const nextWeekly = weeklyReviews.map((r) => (r.id === id ? { ...r, ...patch } : r))
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews: nextWeekly,
-        meta,
-        goals,
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { weeklyReviews: nextWeekly }))
     },
 
     addNextAction: (reviewId, content) => {
-      const { weeklyReviews, tasks, meta, goals, projects, graphEdges } = get()
+      const { weeklyReviews } = get()
       const nextWeekly = weeklyReviews.map((r) => {
         if (r.id !== reviewId) return r
         const action: WeeklyReviewActionItem = {
@@ -348,20 +464,11 @@ export const useTaskStore = create<TaskStore>((set, get) => {
         }
         return { ...r, nextActions: [...r.nextActions, action] }
       })
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews: nextWeekly,
-        meta,
-        goals,
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { weeklyReviews: nextWeekly }))
     },
 
     updateNextAction: (reviewId, actionId, patch) => {
-      const { weeklyReviews, tasks, meta, goals, projects, graphEdges } = get()
+      const { weeklyReviews } = get()
       const nextWeekly = weeklyReviews.map((r) => {
         if (r.id !== reviewId) return r
         const nextActions = r.nextActions.map((a) =>
@@ -369,39 +476,21 @@ export const useTaskStore = create<TaskStore>((set, get) => {
         )
         return { ...r, nextActions }
       })
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews: nextWeekly,
-        meta,
-        goals,
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { weeklyReviews: nextWeekly }))
     },
 
     deleteNextAction: (reviewId, actionId) => {
-      const { weeklyReviews, tasks, meta, goals, projects, graphEdges } = get()
+      const { weeklyReviews } = get()
       const nextWeekly = weeklyReviews.map((r) => {
         if (r.id !== reviewId) return r
         const nextActions = r.nextActions.filter((a) => a.id !== actionId)
         return { ...r, nextActions }
       })
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews: nextWeekly,
-        meta,
-        goals,
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { weeklyReviews: nextWeekly }))
     },
 
     markNextActionConverted: (reviewId, actionId, taskId) => {
-      const { weeklyReviews, tasks, meta, goals, projects, graphEdges } = get()
+      const { weeklyReviews } = get()
       const nextWeekly = weeklyReviews.map((r) => {
         if (r.id !== reviewId) return r
         const nextActions = r.nextActions.map((a) =>
@@ -409,58 +498,31 @@ export const useTaskStore = create<TaskStore>((set, get) => {
         )
         return { ...r, nextActions }
       })
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews: nextWeekly,
-        meta,
-        goals,
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { weeklyReviews: nextWeekly }))
     },
 
     addGoal: (payload) => {
-      const { goals, projects, tasks, weeklyReviews, meta, graphEdges } = get()
+      const { goals } = get()
       const now = new Date()
       const newGoal: Goal = {
         ...payload,
         id: generateId(),
         createdAt: now.toISOString(),
+        status: payload.status ?? 'active',
       }
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews,
-        meta,
-        goals: [...goals, newGoal],
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { goals: [...get().goals, newGoal] }))
       return newGoal.id
     },
 
     updateGoal: (id, patch) => {
-      const { goals, projects, tasks, weeklyReviews, meta, graphEdges } = get()
+      const { goals } = get()
       const nextGoals = goals.map((g) => (g.id === id ? { ...g, ...patch } : g))
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews,
-        meta,
-        goals: nextGoals,
-        projects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { goals: nextGoals }))
     },
 
     deleteGoal: (id) => {
-      const { goals, projects, tasks, weeklyReviews, meta, graphEdges } = get()
+      const { goals, graphEdges } = get()
       const nextGoals = goals.filter((g) => g.id !== id)
-      // Remove any edges that reference this goal.
       const nextEdges = graphEdges.filter(
         (e) =>
           !(
@@ -468,57 +530,34 @@ export const useTaskStore = create<TaskStore>((set, get) => {
             (e.toType === 'goal' && e.toId === id)
           ),
       )
-      // 当前策略：不强制删除挂在该 goal 下的 projects，仅保留为“无父级”的项目。
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews,
-        meta,
-        goals: nextGoals,
-        projects,
-        graphEdges: nextEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { goals: nextGoals, graphEdges: nextEdges }))
+    },
+
+    archiveGoal: (id) => {
+      get().updateGoal(id, { status: 'archived' })
     },
 
     addProject: (payload) => {
-      const { projects, tasks, weeklyReviews, meta, goals, graphEdges } = get()
+      const { projects } = get()
       const now = new Date()
       const newProject: Project = {
         ...payload,
         id: generateId(),
         createdAt: now.toISOString(),
+        status: payload.status ?? 'active',
       }
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews,
-        meta,
-        goals,
-        projects: [...projects, newProject],
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { projects: [...get().projects, newProject] }))
       return newProject.id
     },
 
     updateProject: (id, patch) => {
-      const { projects, tasks, weeklyReviews, meta, goals, graphEdges } = get()
+      const { projects } = get()
       const nextProjects = projects.map((p) => (p.id === id ? { ...p, ...patch } : p))
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews,
-        meta,
-        goals,
-        projects: nextProjects,
-        graphEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { projects: nextProjects }))
     },
 
     deleteProject: (id) => {
-      const { projects, tasks, weeklyReviews, meta, goals, graphEdges } = get()
+      const { projects, graphEdges } = get()
       const nextProjects = projects.filter((p) => p.id !== id)
       const nextEdges = graphEdges.filter(
         (e) =>
@@ -527,22 +566,11 @@ export const useTaskStore = create<TaskStore>((set, get) => {
             (e.toType === 'project' && e.toId === id)
           ),
       )
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews,
-        meta,
-        goals,
-        projects: nextProjects,
-        graphEdges: nextEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { projects: nextProjects, graphEdges: nextEdges }))
     },
 
     setTaskProject: (taskId, projectId) => {
-      const { graphEdges, tasks, weeklyReviews, meta, goals, projects } = get()
-
-      // Remove all existing task↔project edges for this task.
+      const { graphEdges } = get()
       let nextEdges = graphEdges.filter(
         (e) =>
           !(
@@ -554,8 +582,6 @@ export const useTaskStore = create<TaskStore>((set, get) => {
               e.fromType === 'project')
           ),
       )
-
-      // If a project is provided, add a fresh "task -> project" edge.
       if (projectId) {
         const now = new Date()
         const newEdge: GraphEdge = {
@@ -569,53 +595,25 @@ export const useTaskStore = create<TaskStore>((set, get) => {
         }
         nextEdges = [...nextEdges, newEdge]
       }
-
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews,
-        meta,
-        goals,
-        projects,
-        graphEdges: nextEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { graphEdges: nextEdges }))
     },
 
     addGraphEdge: (payload) => {
-      const { graphEdges, tasks, weeklyReviews, meta, goals, projects } = get()
+      const { graphEdges } = get()
       const now = new Date()
       const newEdge: GraphEdge = {
         ...payload,
         id: generateId(),
         createdAt: now.toISOString(),
       }
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews,
-        meta,
-        goals,
-        projects,
-        graphEdges: [...graphEdges, newEdge],
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { graphEdges: [...get().graphEdges, newEdge] }))
       return newEdge.id
     },
 
     deleteGraphEdge: (id) => {
-      const { graphEdges, tasks, weeklyReviews, meta, goals, projects } = get()
+      const { graphEdges } = get()
       const nextEdges = graphEdges.filter((e) => e.id !== id)
-      const nextState: PersistedState = {
-        tasks,
-        weeklyReviews,
-        meta,
-        goals,
-        projects,
-        graphEdges: nextEdges,
-      }
-      persistState(nextState)
-      set(nextState)
+      persistAndSet(get, set, buildState(get, { graphEdges: nextEdges }))
     },
   }
 
@@ -627,6 +625,7 @@ export const useTaskStore = create<TaskStore>((set, get) => {
     goals: store.goals,
     projects: store.projects,
     graphEdges: store.graphEdges,
+    dailyLogs: store.dailyLogs,
   })
 
   return store
@@ -641,5 +640,6 @@ useTaskStore.subscribe((state) => {
     goals: state.goals,
     projects: state.projects,
     graphEdges: state.graphEdges,
+    dailyLogs: state.dailyLogs,
   })
 })

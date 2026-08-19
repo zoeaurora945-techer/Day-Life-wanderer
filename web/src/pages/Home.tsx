@@ -19,8 +19,13 @@ import { TaskEditorDialog } from '../components/tasks/TaskEditorDialog'
 import { WeeklyReviewPanel } from '../components/weekly/WeeklyReviewPanel'
 import { WeekGoalPanel } from '../components/goals/WeekGoalPanel'
 import { OverallGoalPanel } from '../components/goals/OverallGoalPanel'
+import { ChatInput } from '../components/chat/ChatInput'
+import { DailyLogList } from '../components/chat/DailyLogList'
+import { GalaxyView } from '../components/galaxy/GalaxyView'
+import { AlertList } from '../components/alert/AlertList'
+import { ErrorBoundary } from '../components/common/ErrorBoundary'
 
-type TabKey = 'quadrant' | 'list' | 'week' | 'overall'
+type TabKey = 'quadrant' | 'list' | 'week' | 'overall' | 'anchor' | 'galaxy'
 
 /**
  * @description Home page with tabbed layout and shared data store.
@@ -217,6 +222,20 @@ const Home: FC = () => {
         >
           Overall
         </button>
+        <button
+          type="button"
+          className={tabButtonClass('anchor')}
+          onClick={() => setActiveTab('anchor')}
+        >
+          锚点
+        </button>
+        <button
+          type="button"
+          className={tabButtonClass('galaxy')}
+          onClick={() => setActiveTab('galaxy')}
+        >
+          星系
+        </button>
       </nav>
 
       <main className="flex-1 overflow-hidden px-4 py-3">
@@ -262,6 +281,26 @@ const Home: FC = () => {
           <div className="h-full">
             <OverallGoalPanel />
           </div>
+        ) : null}
+
+        {activeTab === 'anchor' ? (
+          <ErrorBoundary label="锚点模块">
+            <div className="h-full overflow-y-auto pr-1">
+              <div className="mx-auto max-w-2xl space-y-4 py-1">
+                <ChatInput />
+                <AlertList />
+                <DailyLogList />
+              </div>
+            </div>
+          </ErrorBoundary>
+        ) : null}
+
+        {activeTab === 'galaxy' ? (
+          <ErrorBoundary label="星系模块">
+            <div className="h-full">
+              <GalaxyView />
+            </div>
+          </ErrorBoundary>
         ) : null}
       </main>
 
