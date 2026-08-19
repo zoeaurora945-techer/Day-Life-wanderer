@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useTaskStore } from '../../store/useTaskStore'
 import { buildGalaxyModel } from '../../shared/derived'
+import { t } from '../../i18n/translations'
 
 /**
  * @description Galaxy view — a cosmic visualisation:
@@ -17,6 +18,9 @@ export function GalaxyView() {
 
   const [dimensions, setDimensions] = useState({ width: 900, height: 640 })
   const containerRef = useRef<HTMLDivElement>(null)
+  const [hasError, setHasError] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const { lang } = useTaskStore((s) => s)
 
   useEffect(() => {
     const el = containerRef.current
@@ -36,10 +40,42 @@ export function GalaxyView() {
     return () => observer.disconnect()
   }, [])
 
-  const model = useMemo(
-    () => buildGalaxyModel(goals, projects, tasks, edges, dimensions.width, dimensions.height),
-    [goals, projects, tasks, edges, dimensions.width, dimensions.height],
-  )
+  // Build model with error handling
+  const model = useMemo(() => {
+    try {
+      return buildGalaxyModel(goals, projects, tasks, edges, dimensions.width, dimensions.height)
+    } catch (err) {
+      console.error('[GalaxyView] buildGalaxyModel error:', err)
+      setHasError(true)
+      setErrorMessage(err instanceof Error ? err.message : 'Unknown error')
+      return null
+    }
+  }, [goals, projects, tasks, edges, dimensions.width, dimensions.height])
+
+  if (hasError) {
+    return (
+      <div className="flex h-full items-center justify-center rounded-2xl bg-red-50 p-6">
+        <div className="text-center">
+          <p className="text-base font-medium text-red-700">{t(lang, 'error.galaxy')}</p>
+          <p className="mt-2 text-sm text-red-500">{errorMessage}</p>
+          <button
+            onClick={() => setHasError(false)}
+            className="mt-4 rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+          >
+            {t(lang, 'error.retry')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!model) {
+    return (
+      <div className="flex h-full items-center justify-center rounded-2xl bg-slate-50">
+        <p className="text-base text-slate-500">{t(lang, 'error.loading')}</p>
+      </div>
+    )
+  }
 
   const starPos = useMemo(
     () => new Map(model.stars.map((s) => [s.goal.id, s])),
@@ -200,8 +236,8 @@ export function GalaxyView() {
 
       {model.stars.length === 0 && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <p className="rounded-full bg-slate-900/80 px-3 py-1 text-xs text-slate-300">
-            还没有人生主线，去「主线」页添加你的第一个目标吧 ✨
+          <p className="rounded-full bg-slate-900/80 px-6 py-3 text-base text-slate-300">
+            {t(lang, 'galaxy.empty')}
           </p>
         </div>
       )}

@@ -212,4 +212,5 @@ export interface WeeklyReviewActionItem {
  */
 export interface AppMeta {
   lastOpenDate?: string // YYYY-MM-DD, local calendar date
+  lang?: 'zh' | 'en' // UI language, defaults to 'zh'
 }

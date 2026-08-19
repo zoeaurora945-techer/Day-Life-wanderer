@@ -24,6 +24,7 @@ import { DailyLogList } from '../components/chat/DailyLogList'
 import { GalaxyView } from '../components/galaxy/GalaxyView'
 import { AlertList } from '../components/alert/AlertList'
 import { ErrorBoundary } from '../components/common/ErrorBoundary'
+import { t, type Language } from '../i18n/translations'
 
 type TabKey = 'board' | 'week' | 'overall' | 'anchor' | 'galaxy'
 type BoardMode = 'quadrant' | 'list'
@@ -40,6 +41,8 @@ const Home: FC = () => {
     deleteTask,
     markNextActionConverted,
     initializeForToday,
+    lang,
+    setLang,
   } = useTaskStore()
 
   const [activeTab, setActiveTab] = useState<TabKey>('board')
@@ -185,7 +188,7 @@ const Home: FC = () => {
   }
 
   const tabButtonClass = (tab: TabKey) =>
-    `inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-full border ${
+    `inline-flex items-center px-4 py-2 text-base font-medium rounded-full border ${
       activeTab === tab
         ? 'border-slate-900 bg-slate-900 text-white'
         : 'border-transparent bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -195,41 +198,41 @@ const Home: FC = () => {
     <div className="flex h-screen flex-col bg-slate-50">
       <HeaderBar now={now} onCreateTask={handleCreateTaskGlobal} />
 
-      <nav className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-2">
+      <nav className="flex items-center gap-2 border-b border-slate-200 bg-white px-6 py-3">
         <button
           type="button"
           className={tabButtonClass('board')}
           onClick={() => setActiveTab('board')}
         >
-          任务
+          {t(lang, 'tab.board')}
         </button>
         <button
           type="button"
           className={tabButtonClass('week')}
           onClick={() => setActiveTab('week')}
         >
-          Week
+          {t(lang, 'tab.week')}
         </button>
         <button
           type="button"
           className={tabButtonClass('overall')}
           onClick={() => setActiveTab('overall')}
         >
-          Overall
+          {t(lang, 'tab.overall')}
         </button>
         <button
           type="button"
           className={tabButtonClass('anchor')}
           onClick={() => setActiveTab('anchor')}
         >
-          锚点
+          {t(lang, 'tab.anchor')}
         </button>
         <button
           type="button"
           className={tabButtonClass('galaxy')}
           onClick={() => setActiveTab('galaxy')}
         >
-          星系
+          {t(lang, 'tab.galaxy')}
         </button>
       </nav>
 

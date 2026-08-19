@@ -1,4 +1,6 @@
 import { Component, type ReactNode } from 'react'
+import { useTaskStore } from '../../store/useTaskStore'
+import { t } from '../../i18n/translations'
 
 interface Props {
   children: ReactNode
@@ -26,10 +28,13 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   render() {
+    const { lang } = useTaskStore((s) => s)
     if (this.state.hasError) {
       return (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {this.props.label ?? '这个模块'}加载出错，但其他功能不受影响。刷新页面再试试～
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-base text-red-700">
+          <p>{this.props.label ?? '这个模块'}</p>
+          <p>{t(lang, 'error.galaxy')}</p>
+          <p className="mt-1 text-sm text-red-500">{t(lang, 'error.otherwise_fine')}</p>
         </div>
       )
     }

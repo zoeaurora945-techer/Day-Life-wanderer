@@ -62,6 +62,7 @@ interface PersistedState {
  * @description Store public API.
  */
 interface TaskStore extends PersistedState {
+  lang: 'zh' | 'en'
   initializeForToday: (now: Date) => void
 
   addTask: (task: Omit<Task, 'id' | 'createdAt' | 'doneAt'>) => string
@@ -93,6 +94,8 @@ interface TaskStore extends PersistedState {
   deleteProject: (id: string) => void
 
   setTaskProject: (taskId: string, projectId: string | null) => void
+
+  setLang: (lang: 'zh' | 'en') => void
 
   addGraphEdge: (payload: Omit<GraphEdge, 'id' | 'createdAt'>) => string
   deleteGraphEdge: (id: string) => void
@@ -308,6 +311,7 @@ export const useTaskStore = create<TaskStore>((set, get) => {
 
   const store: TaskStore = {
     ...initial,
+    lang: initial.meta.lang ?? 'zh',
 
     initializeForToday: (now: Date) => {
       const todayKey = formatDateKey(now)
@@ -614,6 +618,11 @@ export const useTaskStore = create<TaskStore>((set, get) => {
       const { graphEdges } = get()
       const nextEdges = graphEdges.filter((e) => e.id !== id)
       persistAndSet(get, set, buildState(get, { graphEdges: nextEdges }))
+    },
+
+    setLang: (lang) => {
+      const { meta } = get()
+      persistAndSet(get, set, buildState(get, { meta: { ...meta, lang } }))
     },
   }
 
