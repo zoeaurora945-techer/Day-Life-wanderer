@@ -4,7 +4,7 @@
  */
 
 import type { FC } from 'react'
-import type { Task } from '../../types/task'
+import type { Quadrant, Task } from '../../types/task'
 import { QuadrantTaskItem } from './QuadrantTaskItem'
 
 /**
@@ -27,6 +27,18 @@ export interface QuadrantCellProps {
    * @description Optional edit handler for tasks; invoked when a task row is clicked.
    */
   onEditTask?: (task: Task) => void
+  /**
+   * @description Map of task IDs to their current quadrant for coloring.
+   */
+  taskQuadrants?: Map<string, Quadrant>
+  /**
+   * @description Background colors by quadrant.
+   */
+  quadrantBg?: Record<Quadrant, string>
+  /**
+   * @description Border colors by quadrant.
+   */
+  quadrantBorder?: Record<Quadrant, string>
 }
 
 /**
@@ -47,9 +59,23 @@ export const QuadrantCell: FC<QuadrantCellProps> = ({
   onShowMore,
   onDropTask,
   onEditTask,
+  taskQuadrants,
+  quadrantBg,
+  quadrantBorder,
 }) => {
   const visibleTasks = tasks.slice(0, maxVisible)
   const hiddenCount = tasks.length - visibleTasks.length
+
+  // Determine which quadrant this cell represents based on title
+  const cellQuadrant: Quadrant | null = title.includes('urgent') && title.includes('Important')
+    ? 'Q1_IMPORTANT_URGENT'
+    : title.includes('urgent') && !title.includes('Important')
+      ? 'Q2_NOTIMPORTANT_URGENT'
+      : title.includes('not urgent') && title.includes('Important')
+        ? 'Q3_IMPORTANT_NOTURGENT'
+        : title.includes('not urgent') && !title.includes('Important')
+          ? 'Q4_NOTIMPORTANT_NOTURGENT'
+          : null
 
   return (
     <section
@@ -96,6 +122,9 @@ export const QuadrantCell: FC<QuadrantCellProps> = ({
             task={task}
             onToggleDone={onToggleDone}
             onEdit={onEditTask}
+            taskQuadrant={taskQuadrants?.get(task.id) || cellQuadrant}
+            quadrantBg={quadrantBg}
+            quadrantBorder={quadrantBorder}
           />
         ))}
         {visibleTasks.length === 0 ? (

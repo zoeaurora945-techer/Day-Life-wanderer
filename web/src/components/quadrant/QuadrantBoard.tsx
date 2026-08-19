@@ -9,6 +9,8 @@ import { getTaskQuadrant } from '../../utils/taskUtils'
 import { useTaskStore } from '../../store/useTaskStore'
 import { QuadrantCell } from './QuadrantCell'
 import { Trash2 } from 'lucide-react'
+import { useMemo } from 'react'
+import { t } from '../../i18n/translations'
 
 /**
  * @description Props for QuadrantBoard.
@@ -23,7 +25,53 @@ export interface QuadrantBoardProps {
    * @description Optional edit handler for tasks clicked inside any quadrant.
    */
   onEditTask?: (task: Task) => void
+  /**
+   * @description Current board mode (quadrant or list).
+   */
+  boardMode?: BoardMode
+  /**
+   * @description Handler for mode changes.
+   */
+  onModeChange?: (mode: BoardMode) => void
 }
+
+type BoardMode = 'quadrant' | 'list'
+
+/**
+ * @description Mode switcher for quadrant/list views.
+ */
+const BoardModeSwitch: FC<{ mode: BoardMode; onModeChange: (m: BoardMode) => void; lang: string }> = ({
+  mode,
+  onModeChange,
+  lang,
+}) => (
+  <div className="flex items-center justify-center pt-0.5">
+    <div className="relative flex w-48 rounded-full bg-slate-200 p-1 text-xs font-medium">
+      <span
+        className="absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-full bg-white shadow-sm transition-transform duration-200"
+        style={{ transform: mode === 'quadrant' ? 'translateX(0)' : 'translateX(100%)' }}
+      />
+      <button
+        type="button"
+        onClick={() => onModeChange('quadrant')}
+        className={`relative z-10 w-24 px-3 py-1.5 text-center transition-colors ${
+          mode === 'quadrant' ? 'text-slate-900' : 'text-slate-500'
+        }`}
+      >
+        {t(lang, 'tab.board')}
+      </button>
+      <button
+        type="button"
+        onClick={() => onModeChange('list')}
+        className={`relative z-10 w-24 px-3 py-1.5 text-center transition-colors ${
+          mode === 'list' ? 'text-slate-900' : 'text-slate-500'
+        }`}
+      >
+        {t(lang, 'tab.overall')}
+      </button>
+    </div>
+  </div>
+)
 
 /**
  * @description Main 2x2 quadrant board, mapping todo tasks to four colored cells.
@@ -54,6 +102,8 @@ export const QuadrantBoard: FC<QuadrantBoardProps> = ({
   onCreateInQuadrant,
   onFilterByQuadrant,
   onEditTask,
+  boardMode = 'quadrant',
+  onModeChange,
 }) => {
   const todoTasks = tasks.filter((t) => t.status === 'todo')
 
@@ -88,6 +138,7 @@ export const QuadrantBoard: FC<QuadrantBoardProps> = ({
 
   const updateTask = useTaskStore((state) => state.updateTask)
   const deleteTask = useTaskStore((state) => state.deleteTask)
+  const { lang } = useTaskStore((s) => s)
 
   /**
    * @description Moves a task into a target quadrant by updating importance
@@ -135,25 +186,58 @@ export const QuadrantBoard: FC<QuadrantBoardProps> = ({
     }
   }
 
+  // Determine which quadrant a task belongs to for coloring
+  const taskQuadrants = useMemo(() => {
+    const map = new Map<string, Quadrant>()
+    for (const task of tasks) {
+      if (task.status === 'todo') {
+        const q = getTaskQuadrant(task, now)
+        if (q) map.set(task.id, q)
+      }
+    }
+    return map
+  }, [tasks, now])
+
+  // Quadrant background colors
+  const quadrantBg: Record<Quadrant, string> = {
+    Q1_IMPORTANT_URGENT: 'bg-rose-50',
+    Q2_NOTIMPORTANT_URGENT: 'bg-amber-50',
+    Q3_IMPORTANT_NOTURGENT: 'bg-sky-50',
+    Q4_NOTIMPORTANT_NOTURGENT: 'bg-slate-50',
+  }
+
+  // Quadrant border colors for task items
+  const quadrantBorder: Record<Quadrant, string> = {
+    Q1_IMPORTANT_URGENT: 'border-rose-200',
+    Q2_NOTIMPORTANT_URGENT: 'border-amber-200',
+    Q3_IMPORTANT_NOTURGENT: 'border-sky-200',
+    Q4_NOTIMPORTANT_NOTURGENT: 'border-slate-200',
+  }
+
   return (
     <section className="flex h-full flex-col gap-2">
-      {/* Top trash drop zone */}
-      <div
-        className="flex justify-end"
-        onDragOver={(event) => {
-          // Allow dropping tasks here.
-          event.preventDefault()
-        }}
-        onDrop={handleDropToTrash}
-      >
-        <div className="flex cursor-copy items-center gap-1 rounded-full border border-rose-300 bg-rose-50 px-2 py-1 text-[10px] font-medium text-rose-700 shadow-sm">
+      {/* Top toolbar: mode switch + trash */}
+      <div className="flex items-center justify-between px-1">
+        <BoardModeSwitch
+          mode={boardMode}
+          onModeChange={(m) => onModeChange?.(m)}
+          lang={lang}
+        />
+
+        {/* Trash icon only (small, no text) */}
+        <div
+          className="flex cursor-copy items-center gap-1 rounded-full border border-rose-300 bg-rose-50 px-2 py-1 text-[10px] font-medium text-rose-700 shadow-sm"
+          onDragOver={(event) => {
+            event.preventDefault()
+          }}
+          onDrop={handleDropToTrash}
+        >
           <Trash2 className="h-3 w-3" aria-hidden="true" />
-          <span>拖到这里删除任务</span>
         </div>
       </div>
 
-      {/* Main 2x2 quadrant grid */}
-      <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-3">
+      {/* Main 2x2 quadrant grid with beige background */}
+      <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-3 rounded-xl bg-[#faf8f5] p-3">
         {/* Q1: Important & urgent (top-left) */}
         <QuadrantCell
           title="Important & urgent"
@@ -167,6 +251,9 @@ export const QuadrantBoard: FC<QuadrantBoardProps> = ({
             handleMoveTaskToQuadrant(taskId, 'Q1_IMPORTANT_URGENT')
           }
           onEditTask={onEditTask}
+          taskQuadrants={taskQuadrants}
+          quadrantBg={quadrantBg}
+          quadrantBorder={quadrantBorder}
         />
 
         {/* Q3: Important & not urgent (top-right) */}
@@ -182,6 +269,9 @@ export const QuadrantBoard: FC<QuadrantBoardProps> = ({
             handleMoveTaskToQuadrant(taskId, 'Q3_IMPORTANT_NOTURGENT')
           }
           onEditTask={onEditTask}
+          taskQuadrants={taskQuadrants}
+          quadrantBg={quadrantBg}
+          quadrantBorder={quadrantBorder}
         />
 
         {/* Q2: Not important & urgent (bottom-left) */}
@@ -197,6 +287,9 @@ export const QuadrantBoard: FC<QuadrantBoardProps> = ({
             handleMoveTaskToQuadrant(taskId, 'Q2_NOTIMPORTANT_URGENT')
           }
           onEditTask={onEditTask}
+          taskQuadrants={taskQuadrants}
+          quadrantBg={quadrantBg}
+          quadrantBorder={quadrantBorder}
         />
 
         {/* Q4: Not important & not urgent (bottom-right) */}
@@ -214,6 +307,9 @@ export const QuadrantBoard: FC<QuadrantBoardProps> = ({
             handleMoveTaskToQuadrant(taskId, 'Q4_NOTIMPORTANT_NOTURGENT')
           }
           onEditTask={onEditTask}
+          taskQuadrants={taskQuadrants}
+          quadrantBg={quadrantBg}
+          quadrantBorder={quadrantBorder}
         />
       </div>
     </section>

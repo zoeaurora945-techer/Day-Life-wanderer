@@ -5,7 +5,7 @@
 
 import type { DragEvent, FC, MouseEvent } from 'react'
 import { useRef } from 'react'
-import type { Task } from '../../types/task'
+import type { Quadrant, Task } from '../../types/task'
 
 /**
  * @description Props for QuadrantTaskItem.
@@ -21,6 +21,18 @@ export interface QuadrantTaskItemProps {
    * @description Optional delete handler, used when user drags the row far to the left (swipe-to-delete).
    */
   onDelete?: (taskId: string) => void
+  /**
+   * @description The quadrant this task belongs to for coloring.
+   */
+  taskQuadrant?: Quadrant
+  /**
+   * @description Background colors by quadrant.
+   */
+  quadrantBg?: Record<Quadrant, string>
+  /**
+   * @description Border colors by quadrant.
+   */
+  quadrantBorder?: Record<Quadrant, string>
 }
 
 /**
@@ -108,7 +120,14 @@ export const QuadrantTaskItem: FC<QuadrantTaskItemProps> = ({
 
   return (
     <div
-      className="flex cursor-pointer items-center justify-between rounded-md bg-white/80 px-2 py-1 text-xs shadow-sm"
+      className={`flex cursor-pointer items-center justify-between rounded-md px-2 py-1 text-xs shadow-sm ${
+        taskQuadrant && quadrantBg?.[taskQuadrant]
+          ? quadrantBg[taskQuadrant]
+          : 'bg-white/80'
+      } ${taskQuadrant && quadrantBorder?.[taskQuadrant]
+          ? quadrantBorder[taskQuadrant]
+          : 'border-transparent'
+        } border`}
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}

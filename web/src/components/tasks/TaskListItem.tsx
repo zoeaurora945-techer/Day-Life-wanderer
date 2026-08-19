@@ -1,10 +1,10 @@
 /**
  * @file TaskListItem component.
- * @description Full-width task row for the aggregated task list view, styled by category (pastel palette) with basic meta info.
+ * @description Full-width task row for the aggregated task list view, styled by quadrant with basic meta info.
  */
 
 import type { FC } from 'react'
-import type { Task } from '../../types/task'
+import type { Quadrant, Task } from '../../types/task'
 import { getCategoryCardClasses, getCategoryPillClasses } from '../../utils/categoryStyles'
 
 /**
@@ -16,19 +16,47 @@ export interface TaskListItemProps {
   onToggleDone: (taskId: string) => void
   onEdit: (task: Task) => void
   onDelete: (taskId: string) => void
+  /**
+   * @description The quadrant this task belongs to for coloring.
+   */
+  taskQuadrant?: Quadrant
+  /**
+   * @description Background colors by quadrant.
+   */
+  quadrantBg?: Record<Quadrant, string>
+  /**
+   * @description Border colors by quadrant.
+   */
+  quadrantBorder?: Record<Quadrant, string>
 }
 
 /**
- * @description Rich row showing a task with category-based pastel color, category pill,
+ * @description Quadrant colors for the list view.
+ */
+const QUADRANT_COLORS: Record<Quadrant, { bg: string; border: string }> = {
+  Q1_IMPORTANT_URGENT: { bg: 'bg-rose-50', border: 'border-rose-200' },
+  Q2_NOTIMPORTANT_URGENT: { bg: 'bg-amber-50', border: 'border-amber-200' },
+  Q3_IMPORTANT_NOTURGENT: { bg: 'bg-sky-50', border: 'border-sky-200' },
+  Q4_NOTIMPORTANT_NOTURGENT: { bg: 'bg-slate-50', border: 'border-slate-200' },
+}
+
+/**
+ * @description Rich row showing a task with quadrant-based pastel color, category pill,
  * importance, due time and basic controls.
  */
 export const TaskListItem: FC<TaskListItemProps> = ({
   task,
-  now, // kept for API compatibility, currently not used inside
+  now,
   onToggleDone,
   onEdit,
   onDelete,
+  taskQuadrant,
+  quadrantBg: customBg,
+  quadrantBorder: customBorder,
 }) => {
+  // Use quadrant colors if available, fallback to category colors
+  const bgColor = customBg?.[taskQuadrant ?? 'Q4_NOTIMPORTANT_NOTURGENT'] ?? ''
+  const borderColor = customBorder?.[taskQuadrant ?? 'Q4_NOTIMPORTANT_NOTURGENT'] ?? 'border-slate-200'
   const cardAccent = getCategoryCardClasses(task.category)
   const pillAccent = getCategoryPillClasses(task.category)
   const isDone = task.status === 'done'
@@ -51,7 +79,7 @@ export const TaskListItem: FC<TaskListItemProps> = ({
 
   return (
     <article
-      className={`flex cursor-pointer items-start justify-between rounded-lg border px-3 py-2 text-xs shadow-sm ${cardAccent}`}
+      className={`flex cursor-pointer items-start justify-between rounded-lg border px-3 py-2 text-xs shadow-sm ${borderColor} ${bgColor}`}
       onClick={() => onEdit(task)}
     >
       <div className="flex flex-1 items-start gap-2">

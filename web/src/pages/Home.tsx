@@ -239,28 +239,17 @@ const Home: FC = () => {
       <main className="flex-1 overflow-hidden px-4 py-3">
         {activeTab === 'board' ? (
           <div className="flex h-full flex-col gap-2">
-            <BoardModeSwitch mode={boardMode} onModeChange={setBoardMode} />
             <div className="min-h-0 flex-1">
-              {boardMode === 'quadrant' ? (
-                <QuadrantBoard
-                  tasks={tasks}
-                  now={now}
-                  onToggleDone={handleToggleDone}
-                  onCreateInQuadrant={handleCreateInQuadrant}
-                  onFilterByQuadrant={handleFilterByQuadrant}
-                  onEditTask={handleEditTask}
-                />
-              ) : (
-                <TaskListPanel
-                  tasks={tasks}
-                  now={now}
-                  activeQuadrantFilter={activeQuadrantFilter}
-                  onClearQuadrantFilter={handleClearQuadrantFilter}
-                  onToggleDone={handleToggleDone}
-                  onEditTask={handleEditTask}
-                  onDeleteTask={handleDeleteTask}
-                />
-              )}
+              <QuadrantBoard
+                tasks={tasks}
+                now={now}
+                boardMode={boardMode}
+                onModeChange={setBoardMode}
+                onToggleDone={handleToggleDone}
+                onCreateInQuadrant={handleCreateInQuadrant}
+                onFilterByQuadrant={handleFilterByQuadrant}
+                onEditTask={handleEditTask}
+              />
             </div>
           </div>
         ) : null}
@@ -316,37 +305,5 @@ const Home: FC = () => {
     </div>
   )
 }
-
-const BoardModeSwitch: FC<{ mode: BoardMode; onModeChange: (m: BoardMode) => void }> = ({
-  mode,
-  onModeChange,
-}) => (
-  <div className="flex items-center justify-center pt-0.5">
-    <div className="relative flex w-48 rounded-full bg-slate-200 p-1 text-xs font-medium">
-      <span
-        className="absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-full bg-white shadow-sm transition-transform duration-200"
-        style={{ transform: mode === 'quadrant' ? 'translateX(0)' : 'translateX(100%)' }}
-      />
-      <button
-        type="button"
-        onClick={() => onModeChange('quadrant')}
-        className={`relative z-10 w-24 px-3 py-1.5 text-center transition-colors ${
-          mode === 'quadrant' ? 'text-slate-900' : 'text-slate-500'
-        }`}
-      >
-        四象限
-      </button>
-      <button
-        type="button"
-        onClick={() => onModeChange('list')}
-        className={`relative z-10 w-24 px-3 py-1.5 text-center transition-colors ${
-          mode === 'list' ? 'text-slate-900' : 'text-slate-500'
-        }`}
-      >
-        全部清单
-      </button>
-    </div>
-  </div>
-)
 
 export default Home

@@ -4,7 +4,7 @@
  */
 
 import type { FC } from 'react'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { Quadrant, Task } from '../../types/task'
 import { getTaskQuadrant } from '../../utils/taskUtils'
 import { TaskListItem } from './TaskListItem'
@@ -112,10 +112,13 @@ export const TaskListPanel: FC<TaskListPanelProps> = ({
   onEditTask,
   onDeleteTask,
 }) => {
-  const tasksWithQuadrant = tasks.map((task) => ({
-    task,
-    quadrant: getTaskQuadrant(task, now),
-  }))
+  // Compute quadrant for each task
+  const tasksWithQuadrant = useMemo(() => {
+    return tasks.map((task) => ({
+      task,
+      quadrant: getTaskQuadrant(task, now),
+    }))
+  }, [tasks, now])
 
   const todoItems = tasksWithQuadrant
     .filter((tq) => tq.task.status === 'todo')
@@ -152,8 +155,23 @@ export const TaskListPanel: FC<TaskListPanelProps> = ({
     [doneItems, now],
   )
 
+  // Quadrant colors
+  const quadrantBg: Record<Quadrant, string> = {
+    Q1_IMPORTANT_URGENT: 'bg-rose-50',
+    Q2_NOTIMPORTANT_URGENT: 'bg-amber-50',
+    Q3_IMPORTANT_NOTURGENT: 'bg-sky-50',
+    Q4_NOTIMPORTANT_NOTURGENT: 'bg-slate-50',
+  }
+
+  const quadrantBorder: Record<Quadrant, string> = {
+    Q1_IMPORTANT_URGENT: 'border-rose-200',
+    Q2_NOTIMPORTANT_URGENT: 'border-amber-200',
+    Q3_IMPORTANT_NOTURGENT: 'border-sky-200',
+    Q4_NOTIMPORTANT_NOTURGENT: 'border-slate-200',
+  }
+
   return (
-    <section className="flex h-full flex-col rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+    <section className="flex h-full flex-col rounded-xl border border-slate-200 bg-[#faf8f5]/90 p-3 shadow-sm">
       <header className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-slate-900">Tasks</span>
@@ -183,11 +201,14 @@ export const TaskListPanel: FC<TaskListPanelProps> = ({
                 No todo tasks. Add one from the header or any quadrant.
               </div>
             ) : (
-              todoItems.map(({ task }) => (
+              todoItems.map(({ task, quadrant }) => (
                 <TaskListItem
                   key={task.id}
                   task={task}
                   now={now}
+                  taskQuadrant={quadrant}
+                  quadrantBg={quadrantBg}
+                  quadrantBorder={quadrantBorder}
                   onToggleDone={onToggleDone}
                   onEdit={onEditTask}
                   onDelete={onDeleteTask}
@@ -213,7 +234,7 @@ export const TaskListPanel: FC<TaskListPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setShowDone((prev) => !prev)}
-                className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
+                className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50/50 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
               >
                 <span className="flex items-center gap-1">
                   <span>{showDone ? '▼' : '▶'}</span>
@@ -233,16 +254,22 @@ export const TaskListPanel: FC<TaskListPanelProps> = ({
                         <span>{group.tasks.length}</span>
                       </div>
                       <div className="space-y-2">
-                        {group.tasks.map((task) => (
-                          <TaskListItem
-                            key={task.id}
-                            task={task}
-                            now={now}
-                            onToggleDone={onToggleDone}
-                            onEdit={onEditTask}
-                            onDelete={onDeleteTask}
-                          />
-                        ))}
+                        {group.tasks.map((task) => {
+                          const quadrant = getTaskQuadrant(task, now)
+                          return (
+                            <TaskListItem
+                              key={task.id}
+                              task={task}
+                              now={now}
+                              taskQuadrant={quadrant}
+                              quadrantBg={quadrantBg}
+                              quadrantBorder={quadrantBorder}
+                              onToggleDone={onToggleDone}
+                              onEdit={onEditTask}
+                              onDelete={onDeleteTask}
+                            />
+                          )
+                        })}
                       </div>
                     </div>
                   ))}
