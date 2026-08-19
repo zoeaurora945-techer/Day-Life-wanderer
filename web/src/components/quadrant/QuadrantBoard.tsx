@@ -11,6 +11,7 @@ import { QuadrantCell } from './QuadrantCell'
 import { Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { t } from '../../i18n/translations'
+import { TaskListPanel } from '../tasks/TaskListPanel'
 
 /**
  * @description Props for QuadrantBoard.
@@ -236,8 +237,19 @@ export const QuadrantBoard: FC<QuadrantBoardProps> = ({
         </div>
       </div>
 
-      {/* Main 2x2 quadrant grid with beige background */}
-      <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-3 rounded-xl bg-[#faf8f5] p-3">
+      {/* Conditional rendering based on boardMode */}
+      {boardMode === 'list' ? (
+        <TaskListPanel
+          tasks={tasks}
+          now={now}
+          activeQuadrantFilter={null}
+          onClearQuadrantFilter={() => {}}
+          onToggleDone={(id) => {}}
+          onEditTask={(task) => {}}
+          onDeleteTask={(id) => {}}
+        />
+      ) : (
+        <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-3 rounded-xl bg-[#faf8f5] p-3">
         {/* Q1: Important & urgent (top-left) */}
         <QuadrantCell
           title="Important & urgent"
@@ -311,7 +323,8 @@ export const QuadrantBoard: FC<QuadrantBoardProps> = ({
           quadrantBg={quadrantBg}
           quadrantBorder={quadrantBorder}
         />
-      </div>
+        </div>
+      )}
     </section>
   )
 }

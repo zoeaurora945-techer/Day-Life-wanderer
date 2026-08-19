@@ -622,7 +622,7 @@ export const useTaskStore = create<TaskStore>((set, get) => {
 
     setLang: (lang) => {
       const { meta } = get()
-      persistAndSet(get, set, buildState(get, { meta: { ...meta, lang } }))
+      persistAndSet(get, set, buildState(get, { meta: { ...meta, lang }, lang }))
     },
   }
 
