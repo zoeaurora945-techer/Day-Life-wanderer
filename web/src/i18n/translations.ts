@@ -14,10 +14,9 @@ export const translations: Record<Language, Record<string, string | ((...args: a
     'header.new_task': '新建任务',
 
     // Tabs
-    'tab.board': '任务',
+    'tab.board': '四象限',
     'tab.week': '周',
-    'tab.overall': '主线',
-    'tab.anchor': '锚点',
+    'tab.overall': 'Root',
     'tab.galaxy': '星系',
 
     // Board mode switch
@@ -181,10 +180,9 @@ export const translations: Record<Language, Record<string, string | ((...args: a
     'header.new_task': 'New task',
 
     // Tabs
-    'tab.board': 'Tasks',
+    'tab.board': 'Quadrant',
     'tab.week': 'Week',
-    'tab.overall': 'Overall',
-    'tab.anchor': 'Anchor',
+    'tab.overall': 'Root',
     'tab.galaxy': 'Galaxy',
 
     // Board mode switch

@@ -19,14 +19,11 @@ import { TaskEditorDialog } from '../components/tasks/TaskEditorDialog'
 import { WeeklyReviewPanel } from '../components/weekly/WeeklyReviewPanel'
 import { GanttView } from '../components/weekly/GanttView'
 import { OverallGoalPanel } from '../components/goals/OverallGoalPanel'
-import { ChatInput } from '../components/chat/ChatInput'
-import { DailyLogList } from '../components/chat/DailyLogList'
 import { GalaxyView } from '../components/galaxy/GalaxyView'
-import { AlertList } from '../components/alert/AlertList'
 import { ErrorBoundary } from '../components/common/ErrorBoundary'
 import { t, type Language } from '../i18n/translations'
 
-type TabKey = 'board' | 'week' | 'overall' | 'anchor' | 'galaxy'
+type TabKey = 'board' | 'week' | 'overall' | 'galaxy'
 type BoardMode = 'quadrant' | 'list'
 
 /**
@@ -266,13 +263,6 @@ const Home: FC = () => {
         </button>
         <button
           type="button"
-          className={tabButtonClass('anchor')}
-          onClick={() => setActiveTab('anchor')}
-        >
-          {t(lang, 'tab.anchor')}
-        </button>
-        <button
-          type="button"
           className={tabButtonClass('galaxy')}
           onClick={() => setActiveTab('galaxy')}
         >
@@ -306,17 +296,6 @@ const Home: FC = () => {
           <div className="h-full">
             <OverallGoalPanel />
           </div>
-        ) : null}
-
-        {activeTab === 'anchor' ? (
-          <ErrorBoundary label="锚点模块" lang={lang}>
-            <div className="h-full overflow-y-auto pr-1">
-              <div className="mx-auto max-w-2xl space-y-4 py-1">
-                <AlertList />
-                <DailyLogList />
-              </div>
-            </div>
-          </ErrorBoundary>
         ) : null}
 
         {activeTab === 'galaxy' ? (

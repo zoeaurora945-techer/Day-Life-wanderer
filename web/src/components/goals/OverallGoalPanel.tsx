@@ -364,7 +364,7 @@ export const OverallGoalPanel: FC = () => {
       {/* ===== TOP BAR ===== */}
       <header className="flex flex-shrink-0 items-center gap-4 border-b border-slate-100 px-4 py-2.5">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-slate-900">Overall</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Root</h2>
           <p className="text-[11px] text-slate-400">Goals · Projects · Life graph</p>
         </div>
         <div className="h-6 w-px bg-slate-200" />
