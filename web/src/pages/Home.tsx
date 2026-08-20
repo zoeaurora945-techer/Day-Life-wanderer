@@ -17,7 +17,7 @@ import { QuadrantBoard } from '../components/quadrant/QuadrantBoard'
 import { TaskListPanel } from '../components/tasks/TaskListPanel'
 import { TaskEditorDialog } from '../components/tasks/TaskEditorDialog'
 import { WeeklyReviewPanel } from '../components/weekly/WeeklyReviewPanel'
-import { WeekGoalPanel } from '../components/goals/WeekGoalPanel'
+import { GanttView } from '../components/weekly/GanttView'
 import { OverallGoalPanel } from '../components/goals/OverallGoalPanel'
 import { ChatInput } from '../components/chat/ChatInput'
 import { DailyLogList } from '../components/chat/DailyLogList'
@@ -28,6 +28,50 @@ import { t, type Language } from '../i18n/translations'
 
 type TabKey = 'board' | 'week' | 'overall' | 'anchor' | 'galaxy'
 type BoardMode = 'quadrant' | 'list'
+
+/**
+ * @description Week view combining Gantt chart and weekly review.
+ */
+const WeekView: FC<{ now: Date; lang: Language }> = ({ now, lang }) => {
+  const { tasks, goals, projects, graphEdges, weeklyReviews, upsertWeeklyReview, updateWeeklyReview, addNextAction, updateNextAction, deleteNextAction, markNextActionConverted } = useTaskStore()
+
+  const handleCreateTaskFromAction = (payload: {
+    review: WeeklyReview
+    action: WeeklyReviewActionItem
+  }) => {
+    const baseTitle = payload.action.content.trim()
+    if (!baseTitle) return
+    const newTaskId = addTask({
+      title: baseTitle,
+      importance: 'important',
+      category: 'work',
+      status: 'todo',
+      dueAt: new Date().toISOString(),
+      notes: '',
+      urgentMode: 'auto',
+      urgentManual: null,
+    })
+    markNextActionConverted(payload.review.id, payload.action.id, newTaskId)
+  }
+
+  return (
+    <div className="flex h-full flex-col gap-3">
+      <GanttView
+        tasks={tasks}
+        goals={goals}
+        projects={projects}
+        graphEdges={graphEdges}
+        now={now}
+        lang={lang}
+      />
+      <WeeklyReviewPanel
+        now={now}
+        tasks={tasks}
+        onCreateTaskFromAction={handleCreateTaskFromAction}
+      />
+    </div>
+  )
+}
 
 /**
  * @description Home page with tabbed layout and shared data store.
@@ -255,14 +299,7 @@ const Home: FC = () => {
         ) : null}
 
         {activeTab === 'week' ? (
-          <div className="flex h-full flex-col gap-3">
-            <WeekGoalPanel now={now} />
-            <WeeklyReviewPanel
-              now={now}
-              tasks={tasks}
-              onCreateTaskFromAction={handleCreateTaskFromAction}
-            />
-          </div>
+          <WeekView now={now} lang={lang} />
         ) : null}
 
         {activeTab === 'overall' ? (
@@ -275,7 +312,6 @@ const Home: FC = () => {
           <ErrorBoundary label="锚点模块" lang={lang}>
             <div className="h-full overflow-y-auto pr-1">
               <div className="mx-auto max-w-2xl space-y-4 py-1">
-                <ChatInput />
                 <AlertList />
                 <DailyLogList />
               </div>

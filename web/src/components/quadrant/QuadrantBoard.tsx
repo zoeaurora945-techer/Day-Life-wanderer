@@ -9,9 +9,10 @@ import { getTaskQuadrant } from '../../utils/taskUtils'
 import { useTaskStore } from '../../store/useTaskStore'
 import { QuadrantCell } from './QuadrantCell'
 import { Trash2 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { t } from '../../i18n/translations'
 import { TaskListPanel } from '../tasks/TaskListPanel'
+import { CollapsibleChatInput } from '../chat/CollapsibleChatInput'
 
 /**
  * @description Props for QuadrantBoard.
@@ -236,6 +237,9 @@ export const QuadrantBoard: FC<QuadrantBoardProps> = ({
           <Trash2 className="h-3 w-3" aria-hidden="true" />
         </div>
       </div>
+
+      {/* Chat input - always visible above the board */}
+      <CollapsibleChatInput lang={lang} />
 
       {/* Conditional rendering based on boardMode */}
       {boardMode === 'list' ? (
