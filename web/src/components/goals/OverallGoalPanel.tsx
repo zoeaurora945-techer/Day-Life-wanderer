@@ -109,9 +109,10 @@ const SelectedCard: FC<{
   projects: Project[]
   tasks: Task[]
   edges: GraphEdge[]
+  lang: string
   onDelete: (type: 'goal' | 'project', id: string) => void
   onUpdateProject: (id: string, patch: Partial<Project>) => void
-}> = ({ entity, goals, projects, tasks, edges, onDelete, onUpdateProject }) => {
+}> = ({ entity, goals, projects, tasks, edges, lang, onDelete, onUpdateProject }) => {
   if (entity.type === 'goal') {
     const goal = goals.find((g) => g.id === entity.id)
     if (!goal) return null
@@ -438,6 +439,7 @@ export const OverallGoalPanel: FC = () => {
                 projects={projects}
                 tasks={tasks}
                 edges={graphEdges}
+                lang={lang}
                 onDelete={handleDeleteEntity}
                 onUpdateProject={updateProject}
               />
