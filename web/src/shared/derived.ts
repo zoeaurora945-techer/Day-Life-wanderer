@@ -114,13 +114,16 @@ export function buildGalaxyModel(
   edges: GraphEdge[],
   width: number,
   height: number,
+  focusGoalId?: string | null,
 ): GalaxyModel {
   const W = Math.max(width, 820)
   const H = Math.max(height, 600)
   const cx = W / 2
   const cy = H / 2
 
-  const activeGoals = goals.filter((g) => g.status !== 'archived')
+  const activeGoals = goals.filter(
+    (g) => g.status !== 'archived' && (!focusGoalId || g.id === focusGoalId),
+  )
 
   // ---- Stars (goals) ----
   const stars: StarNode[] = activeGoals.map((g, i) => {
@@ -146,6 +149,7 @@ export function buildGalaxyModel(
   const orphans: Project[] = []
   projects.forEach((p) => {
     if (p.status === 'archived') return
+    if (focusGoalId && p.goalId !== focusGoalId) return
     if (p.goalId && starById.has(p.goalId)) {
       if (!byGoal.has(p.goalId)) byGoal.set(p.goalId, [])
       byGoal.get(p.goalId)!.push(p)
@@ -219,8 +223,10 @@ export function buildGalaxyModel(
         return
       }
     }
-    // No linked project → drift as stardust around the center
-    const a = rand01(t.id, 11) * Math.PI * 2
+      // Focus mode: keep unrelated tasks out of the focused galaxy.
+      if (focusGoalId) return
+      // No linked project → drift as stardust around the center
+      const a = rand01(t.id, 11) * Math.PI * 2
     const r = 280 + rand01(t.id, 13) * 120
     moons.push({
       task: t,

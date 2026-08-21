@@ -42,6 +42,18 @@ export const translations: Record<Language, Record<string, string | ((...args: a
     // Galaxy empty state
     'galaxy.empty': '还没有人生主线，去「主线」页添加你的第一个目标吧 ✨',
 
+    // Galaxy time-evolution & focus
+    'galaxy.focus_hint': '点击恒星进入它的星系 · 点击空白返回全景',
+    'galaxy.exit_focus': '返回全景',
+    'galaxy.focusing': '正在凝视',
+    'galaxy.stat_projects': '行星',
+    'galaxy.stat_progress': '整体进度',
+    'galaxy.legend_title': '图例',
+    'galaxy.legend_paused': '冰封行星（已暂停）',
+    'galaxy.legend_completed': '圆满行星（已完成）',
+    'galaxy.legend_free': '游离行星（未归属主线）',
+    'galaxy.legend_star': '恒星亮度 = 活跃度（越久不动越暗）',
+
     // Gantt / Week view
     'week.gantt.today': '今天',
     'week.gantt.no_tasks': '本周没有任务',
@@ -212,6 +224,18 @@ export const translations: Record<Language, Record<string, string | ((...args: a
 
     // Galaxy empty state
     'galaxy.empty': 'No life goals yet. Add your first goal in the "Overall" tab ✨',
+
+    // Galaxy time-evolution & focus
+    'galaxy.focus_hint': 'Click a star to enter its galaxy · click empty space to exit',
+    'galaxy.exit_focus': 'Back to all galaxies',
+    'galaxy.focusing': 'Gazing at',
+    'galaxy.stat_projects': 'Planets',
+    'galaxy.stat_progress': 'Overall progress',
+    'galaxy.legend_title': 'Legend',
+    'galaxy.legend_paused': 'Frozen planet (paused)',
+    'galaxy.legend_completed': 'Fulfilled planet (completed)',
+    'galaxy.legend_free': 'Free planet (no goal)',
+    'galaxy.legend_star': 'Star brightness = activity (dimmer when idle)',
 
     // Gantt / Week view
     'week.gantt.today': 'Today',
