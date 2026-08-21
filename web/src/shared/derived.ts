@@ -202,7 +202,6 @@ export function buildGalaxyModel(
       if (e.fromType === 'task' && e.fromId === t.id && e.toType === 'project') linkedProjectId = e.toId
       else if (e.toType === 'task' && e.toId === t.id && e.fromType === 'project') linkedProjectId = e.fromId
     }
-    if (!linkedProjectId) linkedProjectId = projectId
 
     if (linkedProjectId) {
       const planet = planets.find((p) => p.project.id === linkedProjectId)
