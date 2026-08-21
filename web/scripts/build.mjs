@@ -1,5 +1,5 @@
 import * as esbuild from 'esbuild'
-import { rimraf } from 'rimraf'
+import { rmSync, copyFileSync } from 'fs'
 import stylePlugin from 'esbuild-style-plugin'
 import autoprefixer from 'autoprefixer'
 import tailwindcss from 'tailwindcss'
@@ -7,7 +7,7 @@ import tailwindcss from 'tailwindcss'
 const args = process.argv.slice(2)
 const isProd = args[0] === '--production'
 
-await rimraf('dist')
+await rmSync('dist', { recursive: true, force: true })
 
 /**
  * @type {esbuild.BuildOptions}
@@ -39,6 +39,9 @@ const esbuildOpts = {
 
 if (isProd) {
   await esbuild.build(esbuildOpts)
+  // SPA 兜底：GitHub Pages 对任意路径（含刷新子路由）找不到文件时回退到 index.html
+  copyFileSync('dist/index.html', 'dist/404.html')
+  console.log('✓ 生成 404.html 兜底')
 } else {
   const ctx = await esbuild.context(esbuildOpts)
   await ctx.watch()
