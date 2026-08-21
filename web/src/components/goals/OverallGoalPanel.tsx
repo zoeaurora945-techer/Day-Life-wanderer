@@ -391,11 +391,11 @@ export const OverallGoalPanel: FC = () => {
       {/* ===== TOP BAR ===== */}
       <header className="flex flex-shrink-0 items-center gap-4 border-b border-slate-100 px-4 py-2.5">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-slate-900">Root</h2>
-          <p className="text-[11px] text-slate-400">Goals · Projects · Life graph</p>
+          <h2 className="text-sm font-semibold text-slate-900">{t(lang, 'overall.header')}</h2>
+          <p className="text-[11px] text-slate-400">{t(lang, 'overall.subheader')}</p>
         </div>
         <div className="h-6 w-px bg-slate-200" />
-        <ProgressBar fraction={overallProgress} label="All linked tasks" />
+        <ProgressBar fraction={overallProgress} label={t(lang, 'overall.all_linked')} />
         <div className="flex-1" />
         <div className="flex items-center gap-3 text-[11px] text-slate-500">
           <span>{goals.length} Goals</span>
@@ -407,19 +407,20 @@ export const OverallGoalPanel: FC = () => {
       {/* ===== MAIN GRID: LEFT graph (1fr) | RIGHT panel (1fr) ===== */}
       <div className="flex min-h-0 flex-1 lg:grid lg:grid-cols-2">
 
-        {/* -------- LEFT PANEL: Graph (hero) -------- */}
-        <div className="relative min-h-0 border-b border-slate-200 bg-slate-950 lg:border-b-0 lg:border-r">
-          <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-slate-950 via-slate-950/80 to-transparent px-3 pt-2.5 pb-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-200">
-              Life Graph
+        {/* -------- LEFT PANEL: Blueprint graph (hero) -------- */}
+        <div className="relative min-h-0 border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-sky-50/50 lg:border-b-0 lg:border-r">
+          <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-white via-white/80 to-transparent px-3 pt-2.5 pb-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+              {t(lang, 'overall.graph')}
             </h3>
-            <p className="mt-0.5 text-[10px] text-slate-500">
-              点击节点查看详情 · 点两个节点连线
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              {t(lang, 'overall.graph_hint')}
             </p>
           </div>
           <GoalRelationsGraph
             goals={goals}
             projects={projects}
+            tasks={tasks}
             graphEdges={graphEdges}
             onNodeClick={handleNodeClick}
           />

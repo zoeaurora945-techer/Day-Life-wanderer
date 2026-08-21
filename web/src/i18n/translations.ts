@@ -16,7 +16,7 @@ export const translations: Record<Language, Record<string, string | ((...args: a
     // Tabs
     'tab.board': '四象限',
     'tab.week': '周',
-    'tab.overall': 'Root',
+    'tab.overall': '蓝图',
     'tab.galaxy': '星系',
 
     // Board mode switch
@@ -84,10 +84,10 @@ export const translations: Record<Language, Record<string, string | ((...args: a
     'week.gantt.collapse': '收起',
 
     // Overall (主线) view
-    'overall.header': '主线',
-    'overall.subheader': '人生目标 · 项目 · 关联图谱',
+    'overall.header': '蓝图',
+    'overall.subheader': '人生目标 · 项目 · 结构图谱',
     'overall.all_linked': '已关联任务',
-    'overall.graph': '人生图谱',
+    'overall.graph': '人生蓝图',
     'overall.graph_hint': '点击节点查看详情 · 选两个节点连线',
     'overall.goal_count': (n: number) => `${n} 个目标`,
     'overall.project_count': (n: number) => `${n} 个项目`,
@@ -120,8 +120,12 @@ export const translations: Record<Language, Record<string, string | ((...args: a
     'overall.relation_depends': '依赖',
     'overall.goal_type': '恒星 · Goal',
     'overall.project_type': '行星 · Project',
-    'overall.orphan_project': '游离行星',
+    'overall.orphan_project': '游离项目',
     'overall.edit_goal': '编辑',
+    'overall.filter_all': '全部',
+    'overall.legend_title': '图例',
+    'overall.legend_size': '节点大小 = 完成进度',
+    'overall.legend_goal': '目标（恒星）',
     'overall.save_goal': '保存',
 
     // Daily Log / Anchor
@@ -199,7 +203,7 @@ export const translations: Record<Language, Record<string, string | ((...args: a
     // Tabs
     'tab.board': 'Quadrant',
     'tab.week': 'Week',
-    'tab.overall': 'Root',
+    'tab.overall': 'Blueprint',
     'tab.galaxy': 'Galaxy',
 
     // Board mode switch
@@ -267,10 +271,10 @@ export const translations: Record<Language, Record<string, string | ((...args: a
     'week.gantt.collapse': 'collapse',
 
     // Overall (主线) view
-    'overall.header': 'Overall',
-    'overall.subheader': 'Goals · Projects · Life graph',
+    'overall.header': 'Blueprint',
+    'overall.subheader': 'Goals · Projects · Structure map',
     'overall.all_linked': 'All linked tasks',
-    'overall.graph': 'Life Graph',
+    'overall.graph': 'Life Blueprint',
     'overall.graph_hint': 'Click a node to view details · Select two nodes to link',
     'overall.goal_count': (n: number) => `${n} Goal${n !== 1 ? 's' : ''}`,
     'overall.project_count': (n: number) => `${n} Project${n !== 1 ? 's' : ''}`,
@@ -303,8 +307,12 @@ export const translations: Record<Language, Record<string, string | ((...args: a
     'overall.relation_depends': 'depends_on',
     'overall.goal_type': 'Star · Goal',
     'overall.project_type': 'Planet · Project',
-    'overall.orphan_project': 'Free planet',
+    'overall.orphan_project': 'Free project',
     'overall.edit_goal': 'Edit',
+    'overall.filter_all': 'All',
+    'overall.legend_title': 'Legend',
+    'overall.legend_size': 'Node size = progress',
+    'overall.legend_goal': 'Goal (star)',
     'overall.save_goal': 'Save',
 
     // Daily Log / Anchor
