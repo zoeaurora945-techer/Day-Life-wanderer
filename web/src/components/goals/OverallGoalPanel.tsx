@@ -10,6 +10,7 @@ import { useMemo, useState } from 'react'
 import type { GraphEdge, Goal, Project, Task } from '../../types/task'
 import { useTaskStore } from '../../store/useTaskStore'
 import { GoalRelationsGraph } from './GoalRelationsGraph'
+import { t } from '../../i18n/translations'
 
 /**
  * @description Computes tasks connected to a specific goal via Task->Goal edges.
@@ -135,7 +136,7 @@ const SelectedCard: FC<{
           </button>
         </div>
         <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
-          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">恒星 · Goal</span>
+          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">{t(lang, 'overall.goal_type')}</span>
           <span>{done}/{total} 关联任务 · {pct}</span>
         </div>
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
@@ -170,11 +171,11 @@ const SelectedCard: FC<{
         </button>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">小行星 · Project</span>
+        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">{t(lang, 'overall.project_type')}</span>
         {parentGoal ? (
           <span className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-700">⭐ {parentGoal.title}</span>
         ) : (
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">无归属 Goal</span>
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">{t(lang, 'overall.orphan_project')}</span>
         )}
         <span>{linkedTaskCount} tasks</span>
       </div>
@@ -206,7 +207,9 @@ export const OverallGoalPanel: FC = () => {
     goals,
     projects,
     graphEdges,
+    lang,
     addGoal,
+    updateGoal,
     deleteGoal,
     addProject,
     updateProject,
@@ -228,6 +231,10 @@ export const OverallGoalPanel: FC = () => {
   const [selectedEntity, setSelectedEntity] = useState<{ type: 'goal' | 'project'; id: string } | null>(null)
   const [relation, setRelation] =
     useState<GraphEdge['relation']>('supports')
+
+  // Inline goal editing state
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null)
+  const [editingGoalTitle, setEditingGoalTitle] = useState('')
 
   // Section collapse states
   const [goalsExpanded, setGoalsExpanded] = useState(true)
@@ -292,6 +299,26 @@ export const OverallGoalPanel: FC = () => {
     if (type === 'goal') deleteGoal(id)
     else deleteProject(id)
     setSelectedEntity(null)
+  }
+
+  const startEditGoal = (goal: Goal) => {
+    setEditingGoalId(goal.id)
+    setEditingGoalTitle(goal.title)
+  }
+
+  const saveEditGoal = () => {
+    if (!editingGoalId) return
+    const title = editingGoalTitle.trim()
+    if (title) {
+      updateGoal(editingGoalId, { title })
+    }
+    setEditingGoalId(null)
+    setEditingGoalTitle('')
+  }
+
+  const cancelEditGoal = () => {
+    setEditingGoalId(null)
+    setEditingGoalTitle('')
   }
 
   /* ---- Derived data ---- */
@@ -456,34 +483,63 @@ export const OverallGoalPanel: FC = () => {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {goalCards.map(({ goal, goalTasks, total, done, fraction }) => (
-                        <div
-                          key={goal.id}
-                          onClick={() => setSelectedEntity({ type: 'goal', id: goal.id })}
-                          className="group/goal cursor-pointer rounded-lg border border-slate-100 bg-white p-2.5 transition-colors hover:border-sky-200 hover:bg-sky-50/30"
-                        >
-                          <div className="mb-1.5 flex items-start justify-between gap-2">
-                            <h4 className="min-w-0 line-clamp-1 text-xs font-semibold text-slate-800">
-                              {goal.title}
-                            </h4>
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); deleteGoal(goal.id) }}
-                              className="shrink-0 text-[10px] font-medium text-red-500 opacity-0 transition-opacity group-hover/goal:opacity-100 hover:text-red-600"
-                            >
-                              Delete
-                            </button>
+                      {goalCards.map(({ goal, goalTasks, total, done, fraction }) => {
+                        const isEditing = editingGoalId === goal.id
+                        return (
+                          <div
+                            key={goal.id}
+                            onClick={() => !isEditing && setSelectedEntity({ type: 'goal', id: goal.id })}
+                            className={`group/goal rounded-lg border border-slate-100 bg-white p-2.5 transition-colors hover:border-sky-200 hover:bg-sky-50/30 ${isEditing ? '' : 'cursor-pointer'}`}
+                          >
+                            <div className="mb-1.5 flex items-start justify-between gap-2">
+                              {isEditing ? (
+                                <input
+                                  autoFocus
+                                  className="min-w-0 flex-1 rounded border border-sky-300 bg-white px-1.5 py-1 text-xs focus:border-sky-400 focus:outline-none"
+                                  value={editingGoalTitle}
+                                  onChange={(e) => setEditingGoalTitle(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveEditGoal()
+                                    if (e.key === 'Escape') cancelEditGoal()
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onBlur={saveEditGoal}
+                                />
+                              ) : (
+                                <h4 className="min-w-0 line-clamp-1 text-xs font-semibold text-slate-800">
+                                  {goal.title}
+                                </h4>
+                              )}
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                {!isEditing && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); startEditGoal(goal) }}
+                                    className="text-[10px] font-medium text-sky-600 opacity-0 transition-opacity group-hover/goal:opacity-100 hover:text-sky-700"
+                                  >
+                                    {t(lang, 'overall.edit_goal')}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); deleteGoal(goal.id) }}
+                                  className="text-[10px] font-medium text-red-500 opacity-0 transition-opacity group-hover/goal:opacity-100 hover:text-red-600"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                            <ProgressBar
+                              fraction={fraction}
+                              label={
+                                total === 0
+                                  ? 'No linked tasks'
+                                  : `${done}/${total} done`
+                              }
+                            />
                           </div>
-                          <ProgressBar
-                            fraction={fraction}
-                            label={
-                              total === 0
-                                ? 'No linked tasks'
-                                : `${done}/${total} done`
-                            }
-                          />
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>

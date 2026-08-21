@@ -106,6 +106,11 @@ export const translations: Record<Language, Record<string, string | ((...args: a
     'overall.select_project': '项目…',
     'overall.relation_supports': '支持',
     'overall.relation_depends': '依赖',
+    'overall.goal_type': '恒星 · Goal',
+    'overall.project_type': '行星 · Project',
+    'overall.orphan_project': '游离行星',
+    'overall.edit_goal': '编辑',
+    'overall.save_goal': '保存',
 
     // Daily Log / Anchor
     'anchor.title': '每天说一句',
@@ -272,6 +277,11 @@ export const translations: Record<Language, Record<string, string | ((...args: a
     'overall.select_project': 'Project…',
     'overall.relation_supports': 'supports',
     'overall.relation_depends': 'depends_on',
+    'overall.goal_type': 'Star · Goal',
+    'overall.project_type': 'Planet · Project',
+    'overall.orphan_project': 'Free planet',
+    'overall.edit_goal': 'Edit',
+    'overall.save_goal': 'Save',
 
     // Daily Log / Anchor
     'anchor.title': 'Say something daily',
