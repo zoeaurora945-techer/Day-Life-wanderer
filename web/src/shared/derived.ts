@@ -36,6 +36,30 @@ export function computeProjectProgress(
   return done / related.length
 }
 
+/**
+ * @description Visual category for a task in the galaxy view.
+ * - 'completed'  : done
+ * - 'breach'     : not done and past due by more than BREACH_GRACE_MS (a broken commitment)
+ * - 'overdue'    : not done and past due but within the grace window
+ * - 'in_progress': not done and not yet past due (doing / upcoming)
+ */
+export type TaskVisualState = 'in_progress' | 'todo' | 'completed' | 'overdue' | 'breach'
+
+const BREACH_GRACE_MS = 24 * 60 * 60 * 1000
+
+export function taskVisualState(task: Task, now: number = Date.now()): TaskVisualState {
+  if (task.status === 'done') return 'completed'
+  const due = new Date(task.dueAt).getTime()
+  if (!isNaN(due)) {
+    const diff = now - due
+    if (diff > BREACH_GRACE_MS) return 'breach'
+    if (diff > 0) return 'overdue'
+  }
+  // Not past due: a 'todo' that hasn't started is light gray; everything else is in-progress.
+  if (task.status === 'todo') return 'todo'
+  return 'in_progress'
+}
+
 /** Stable color palette for stars / planets (by index). */
 export const GALAXY_PALETTE = [
   '#f472b6',
@@ -82,6 +106,7 @@ export interface MoonNode {
   cy: number
   projectId: string | null
   index: number
+  visual: TaskVisualState
 }
 
 export interface DustNode {
@@ -115,6 +140,7 @@ export function buildGalaxyModel(
   width: number,
   height: number,
   focusGoalId?: string | null,
+  now: number = Date.now(),
 ): GalaxyModel {
   const W = Math.max(width, 820)
   const H = Math.max(height, 600)
@@ -196,10 +222,35 @@ export function buildGalaxyModel(
   })
 
   // ---- Moons (tasks) ----
+  // Overview (no focus): only show IN-PROGRESS (doing) tasks as moons — the star's
+  //   default surface. Completed / overdue / breach tasks are revealed after zooming in.
+  // Focus (a star zoomed): show ALL tasks belonging to that star's projects.
   const moons: MoonNode[] = []
   let moonIndex = 0
+
+  const focusProjectIds = focusGoalId
+    ? new Set(projects.filter((p) => p.goalId === focusGoalId).map((p) => p.id))
+    : null
+
+  const taskBelongsToFocus = (task: Task): boolean => {
+    if (!focusProjectIds) return false
+    for (const e of edges) {
+      if (e.fromType === 'task' && e.fromId === task.id && e.toType === 'project' && focusProjectIds.has(e.toId)) return true
+      if (e.toType === 'task' && e.toId === task.id && e.fromType === 'project' && focusProjectIds.has(e.fromId)) return true
+    }
+    return false
+  }
+
   tasks.forEach((t) => {
-    if (t.status === 'done') return
+    // Visibility filter.
+    if (focusGoalId) {
+      if (!taskBelongsToFocus(t)) return
+    } else if (t.status !== 'doing' && t.status !== 'todo') {
+      return
+    }
+
+    const visual = taskVisualState(t, now)
+
     // Resolve the project this task is linked to (either direction).
     let linkedProjectId: string | null = null
     for (const e of edges) {
@@ -214,19 +265,19 @@ export function buildGalaxyModel(
         const r = 22 + rand01(t.id, 5) * 14
         moons.push({
           task: t,
-          cx:
-            planet.cx + Math.cos(a) * r,
+          cx: planet.cx + Math.cos(a) * r,
           cy: planet.cy + Math.sin(a) * r,
           projectId: linkedProjectId,
           index: moonIndex++,
+          visual,
         })
         return
       }
     }
-      // Focus mode: keep unrelated tasks out of the focused galaxy.
-      if (focusGoalId) return
-      // No linked project → drift as stardust around the center
-      const a = rand01(t.id, 11) * Math.PI * 2
+    // Focus mode: keep unrelated tasks out of the focused galaxy.
+    if (focusGoalId) return
+    // No linked project → drift as stardust around the center
+    const a = rand01(t.id, 11) * Math.PI * 2
     const r = 280 + rand01(t.id, 13) * 120
     moons.push({
       task: t,
@@ -234,6 +285,7 @@ export function buildGalaxyModel(
       cy: cy + Math.sin(a) * r,
       projectId: null,
       index: moonIndex++,
+      visual,
     })
   })
 

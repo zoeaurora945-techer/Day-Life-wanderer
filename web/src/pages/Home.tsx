@@ -301,7 +301,7 @@ const Home: FC = () => {
         {activeTab === 'galaxy' ? (
           <ErrorBoundary label="星系模块" lang={lang}>
             <div className="h-full">
-              <GalaxyView />
+              <GalaxyView onOpenTask={openEditDialog} />
             </div>
           </ErrorBoundary>
         ) : null}

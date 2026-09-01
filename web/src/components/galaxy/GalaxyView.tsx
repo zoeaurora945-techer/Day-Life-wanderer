@@ -1,6 +1,12 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useTaskStore } from '../../store/useTaskStore'
-import { buildGalaxyModel, getProjectTaskIds } from '../../shared/derived'
+import {
+  buildGalaxyModel,
+  getProjectTaskIds,
+  taskVisualState,
+  type TaskVisualState,
+} from '../../shared/derived'
+import { Metric } from './Metric'
 import { t } from '../../i18n/translations'
 import type { Project, Task, GraphEdge } from '../../types/task'
 
@@ -45,8 +51,8 @@ interface PlanetStyle {
 function planetStyle(status?: string): PlanetStyle {
   switch (status) {
     case 'paused':
-      // 冰封行星：冷淡蓝、半透明、霜环
-      return { fill: '#7dd3fc', opacity: 0.7, ring: '#e0f2fe', ringW: 2, symbol: '⏸' }
+      // 冰封行星：冷灰、半透明、霜环
+      return { fill: '#94a3b8', opacity: 0.7, ring: '#cbd5e1', ringW: 2, symbol: '⏸' }
     case 'completed':
       // 圆满行星：暖金、光环
       return { fill: '#fde68a', opacity: 1, ring: '#fffbeb', ringW: 2.5, symbol: '★' }
@@ -56,6 +62,25 @@ function planetStyle(status?: string): PlanetStyle {
   }
 }
 
+const VISUAL_DOT: Record<TaskVisualState, string> = {
+  in_progress: '#fbbf24',
+  todo: '#cbd5e1',
+  completed: '#b45309',
+  overdue: '#ef4444',
+  breach: '#4b5563',
+}
+
+function formatDue(iso: string, lang: 'zh' | 'en'): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 /**
  * @description Galaxy view — a cosmic visualisation:
  * - goals → glowing STARS (恒星), planets → PROJECTS orbiting their star,
@@ -63,8 +88,18 @@ function planetStyle(status?: string): PlanetStyle {
  * - Time evolution: star brightness = subtree activity; planets show
  *   paused(frozen)/completed(fulfilled) forms; moons show doing/todo states.
  * - Focus mode: click a star to zoom into its single-galaxy system.
+ * - Interactivity: every celestial body is clickable and links to the task view:
+ *   · moon (task)      → open the task editor (details)
+ *   · planet (project) → panel listing that project's tasks
+ *   · star (goal)      → zoom + panel listing ALL tasks generated to complete it
+ * - Visual states: in-progress (bright gold) / todo (light gray + gold dashed ring) /
+ *   completed (dark gold + gold halo) / overdue (red shimmer) / breach (dark gray collapse).
  */
-export function GalaxyView() {
+export function GalaxyView({
+  onOpenTask,
+}: {
+  onOpenTask?: (task: Task) => void
+}) {
   const goals = useTaskStore((s) => s.goals)
   const projects = useTaskStore((s) => s.projects)
   const tasks = useTaskStore((s) => s.tasks)
@@ -76,6 +111,41 @@ export function GalaxyView() {
   const [hasError, setHasError] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+  // Breach intro: the one-shot dynamic shatter/collapse only plays the first time
+  // the user enters the galaxy with breach tasks present; afterwards a static loop shows.
+  const [breachIntro, setBreachIntro] = useState(false)
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  // One-shot dynamic shatter/collapse for breach tasks — plays only the first time
+  // the user opens the galaxy while breach tasks exist; then a static loop takes over.
+  useEffect(() => {
+    if (!model) return
+    const hasBreach = model.moons.some((m) => m.visual === 'breach')
+    if (!hasBreach) return
+    const KEY = 'galaxy:breachIntroSeen'
+    let seen = false
+    try {
+      seen = localStorage.getItem(KEY) === '1'
+    } catch {
+      seen = false
+    }
+    if (seen) return
+    setBreachIntro(true)
+    try {
+      localStorage.setItem(KEY, '1')
+    } catch {
+      /* ignore */
+    }
+    const tid = window.setTimeout(() => setBreachIntro(false), 2400)
+    return () => window.clearTimeout(tid)
+  }, [model])
 
   useEffect(() => {
     const el = containerRef.current
@@ -112,6 +182,7 @@ export function GalaxyView() {
         dimensions.width,
         dimensions.height,
         safeFocus,
+        now,
       )
     } catch (err) {
       console.error('[GalaxyView] buildGalaxyModel error:', err)
@@ -119,7 +190,31 @@ export function GalaxyView() {
       setErrorMessage(err instanceof Error ? err.message : 'Unknown error')
       return null
     }
-  }, [goals, projects, tasks, edges, dimensions.width, dimensions.height, safeFocus])
+  }, [goals, projects, tasks, edges, dimensions.width, dimensions.height, safeFocus, now])
+
+  const clearSelection = () => {
+    setSelectedTaskId(null)
+    setSelectedProjectId(null)
+    setFocusGoalId(null)
+  }
+
+  const handleTaskClick = (task: Task) => {
+    if (onOpenTask) onOpenTask(task)
+    else setSelectedTaskId(task.id)
+  }
+
+  const handlePlanetClick = (project: Project) => {
+    setSelectedProjectId(project.id)
+    setSelectedTaskId(null)
+  }
+
+  const handleStarClick = (goalId: string) => {
+    if (!safeFocus) {
+      setFocusGoalId(goalId)
+      setSelectedProjectId(null)
+      setSelectedTaskId(null)
+    }
+  }
 
   if (hasError) {
     return (
@@ -164,6 +259,64 @@ export function GalaxyView() {
 
   const focusedTitle = safeFocus ? model.stars[0]?.goal.title ?? '' : ''
 
+  // ---- Detail panel data ----
+  const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null
+  const selectedProject = selectedProjectId
+    ? projects.find((p) => p.id === selectedProjectId) ?? null
+    : null
+  const focusGoal = safeFocus ? goals.find((g) => g.id === safeFocus) ?? null : null
+
+  const projectTaskList = useMemo(() => {
+    if (!selectedProjectId) return []
+    const ids = getProjectTaskIds(selectedProjectId, edges)
+    return tasks.filter((t) => ids.includes(t.id))
+  }, [selectedProjectId, edges, tasks])
+
+  const goalTaskList = useMemo(() => {
+    if (!safeFocus) return []
+    const projIds = new Set(projects.filter((p) => p.goalId === safeFocus).map((p) => p.id))
+    return tasks.filter((t) => {
+      for (const e of edges) {
+        if (e.fromType === 'task' && e.fromId === t.id && e.toType === 'project' && projIds.has(e.toId)) return true
+        if (e.toType === 'task' && e.toId === t.id && e.fromType === 'project' && projIds.has(e.fromId)) return true
+      }
+      return false
+    })
+  }, [safeFocus, projects, edges, tasks])
+
+  const goalCounts: Record<TaskVisualState, number> = {
+    in_progress: 0,
+    todo: 0,
+    completed: 0,
+    overdue: 0,
+    breach: 0,
+  }
+  goalTaskList.forEach((t) => {
+    goalCounts[taskVisualState(t, now)]++
+  })
+
+  const statusLabel = (v: TaskVisualState) => t(lang, `galaxy.status.${v}`)
+
+  const TaskRow = ({ task }: { task: Task }) => {
+    const v = taskVisualState(task, now)
+    return (
+      <button
+        key={task.id}
+        onClick={(e) => {
+          e.stopPropagation()
+          handleTaskClick(task)
+        }}
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-white/10"
+      >
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: VISUAL_DOT[v] }} />
+        <span className="flex-1 truncate text-[12px] text-slate-200">{task.title}</span>
+        <span className="shrink-0 text-[10px] text-slate-500">{statusLabel(v)}</span>
+      </button>
+    )
+  }
+
+  const panelOpen = Boolean(selectedTask || selectedProject || focusGoal)
+
   return (
     <div
       ref={containerRef}
@@ -203,17 +356,35 @@ export function GalaxyView() {
             @keyframes gxF { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
             .gx-in { animation: gxIn .45s ease both; }
             @keyframes gxIn { from { opacity: 0; } to { opacity: 1; } }
+            .gx-overdue { animation: gxOverdue 1.1s ease-in-out infinite; }
+            @keyframes gxOverdue {
+              0%,100% { filter: drop-shadow(0 0 1px #ef4444); }
+              50% { filter: drop-shadow(0 0 6px #ef4444); }
+            }
+            .gx-breach { transform-box: fill-box; transform-origin: center; animation: gxBreach 3.2s ease-in-out infinite; }
+            @keyframes gxBreach {
+              0%   { transform: scale(1) rotate(0deg);    opacity: 1; }
+              50%  { transform: scale(1.28) rotate(180deg); opacity: 0.45; }
+              100% { transform: scale(1) rotate(360deg);  opacity: 1; }
+            }
+            .gx-breach-intro { transform-box: fill-box; transform-origin: center; animation: gxBreachIntro 2.4s ease-out 1 both; }
+            @keyframes gxBreachIntro {
+              0%   { transform: scale(1) rotate(0deg);     opacity: 1; }
+              35%  { transform: scale(1.5) rotate(45deg);   opacity: 1; }
+              70%  { transform: scale(0.18) rotate(170deg); opacity: 0.15; }
+              100% { transform: scale(1) rotate(360deg);    opacity: 1; }
+            }
           `}</style>
         </defs>
 
-        {/* Background — click empty space to exit focus */}
+        {/* Background — click empty space to exit focus / clear selection */}
         <rect
           x={0}
           y={0}
           width={model.width}
           height={model.height}
           fill="url(#gx-space)"
-          onClick={() => setFocusGoalId(null)}
+          onClick={() => clearSelection()}
           style={{ cursor: safeFocus ? 'zoom-out' : 'default' }}
         />
         <ellipse
@@ -274,22 +445,65 @@ export function GalaxyView() {
             )
           })}
 
-        {/* Moons (tasks) — doing brighter, todo dimmer */}
+        {/* Moons (tasks) — clickable; visual state by status */}
         {model.moons.map((m) => {
-          const doing = m.task.status === 'doing'
-          const r = doing ? 3 : 2.2
-          const op = doing ? 1 : 0.5
-          const fill = doing ? '#fef9c3' : '#cbd5e1'
+          const v = m.visual
+          const r = v === 'completed' ? 3.4 : v === 'breach' ? 3.2 : 3
+          let fill = '#fbbf24'
+          let ring: string | null = null
+          let ringDash = false
+          if (v === 'completed') {
+            fill = '#b45309'
+            ring = '#fbbf24'
+          } else if (v === 'todo') {
+            fill = '#cbd5e1'
+            ring = '#fbbf24'
+            ringDash = true
+          } else if (v === 'overdue') {
+            fill = '#ef4444'
+          } else if (v === 'breach') {
+            fill = '#4b5563'
+          }
           return (
-            <g key={`m-${m.task.id}`} transform={`translate(${m.cx},${m.cy})`}>
-              <g className="gx-float" style={{ animationDelay: `${(m.index % 8) * 0.4}s` }}>
-                <circle r={r} fill={fill} opacity={op} />
-              </g>
+            <g
+              key={`m-${m.task.id}`}
+              transform={`translate(${m.cx},${m.cy})`}
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleTaskClick(m.task)
+              }}
+            >
+              {v === 'breach' ? (
+                <g className={breachIntro ? 'gx-breach-intro' : 'gx-breach'}>
+                  {ring ? (
+                    <circle r={r + 3} fill="none" stroke={ring} strokeWidth={1} opacity={0.7} />
+                  ) : null}
+                  <circle r={r} fill={fill} opacity={1} />
+                </g>
+              ) : (
+                <g
+                  className={v === 'overdue' ? 'gx-float gx-overdue' : 'gx-float'}
+                  style={{ animationDelay: `${(m.index % 8) * 0.4}s` }}
+                >
+                  {ring ? (
+                    <circle
+                      r={r + 3}
+                      fill="none"
+                      stroke={ring}
+                      strokeWidth={1}
+                      opacity={0.7}
+                      strokeDasharray={ringDash ? '2.5 2' : undefined}
+                    />
+                  ) : null}
+                  <circle r={r} fill={fill} opacity={1} />
+                </g>
+              )}
             </g>
           )
         })}
 
-        {/* Planets (projects) — time-evolution forms */}
+        {/* Planets (projects) — time-evolution forms; clickable to list tasks */}
         {model.planets.map((p) => {
           const r = 6 + p.progress * 9
           const st = planetStyle(p.project.status)
@@ -298,8 +512,11 @@ export function GalaxyView() {
             <g key={`p-${p.project.id}`} transform={`translate(${p.cx},${p.cy})`}>
               <g
                 className="gx-float"
-                style={{ animationDelay: `${(p.index % 8) * 0.5}s` }}
-                onClick={(e) => e.stopPropagation()}
+                style={{ animationDelay: `${(p.index % 8) * 0.5}s`, cursor: 'pointer' }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handlePlanetClick(p.project)
+                }}
               >
                 {st.ring && (
                   <circle r={r + 3.5} fill="none" stroke={st.ring} strokeWidth={st.ringW} opacity={0.7} />
@@ -319,7 +536,7 @@ export function GalaxyView() {
           )
         })}
 
-        {/* Stars (goals) — brightness = activity */}
+        {/* Stars (goals) — brightness = activity; click to zoom (focus) */}
         {model.stars.map((s) => {
           const lvl = goalActivityLevel(s.goal.id, projects, tasks, edges, s.goal.lastActiveAt)
           const r = 18 + lvl * 16
@@ -332,7 +549,7 @@ export function GalaxyView() {
               style={{ cursor: safeFocus ? 'default' : 'pointer' }}
               onClick={(e) => {
                 e.stopPropagation()
-                if (!safeFocus) setFocusGoalId(s.goal.id)
+                if (!safeFocus) handleStarClick(s.goal.id)
               }}
             >
               {/* enlarged hit area */}
@@ -365,7 +582,7 @@ export function GalaxyView() {
           <button
             onClick={(e) => {
               e.stopPropagation()
-              setFocusGoalId(null)
+              clearSelection()
             }}
             className="rounded-full bg-white/10 px-3 py-1 font-medium text-white hover:bg-white/20"
           >
@@ -375,29 +592,186 @@ export function GalaxyView() {
       )}
 
       {/* Focus hint (overview only) */}
-      {!safeFocus && model.stars.length > 0 && (
+      {!safeFocus && !panelOpen && model.stars.length > 0 && (
         <div className="absolute left-4 top-4 rounded-full bg-slate-900/80 px-4 py-2 text-xs text-slate-300 ring-1 ring-white/10 backdrop-blur">
           {t(lang, 'galaxy.focus_hint')}
         </div>
       )}
 
-      {/* Legend */}
-      <div className="absolute bottom-4 right-4 w-56 rounded-xl bg-slate-900/85 px-4 py-3 text-xs text-slate-200 shadow-lg ring-1 ring-white/10 backdrop-blur">
+      {/* Detail panel (task / project / focused goal) */}
+      {selectedTask ? (
+        <div className="absolute bottom-4 left-4 top-16 w-72 overflow-y-auto rounded-xl bg-slate-900/90 p-4 text-slate-100 shadow-xl ring-1 ring-white/10 backdrop-blur">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-semibold">{t(lang, 'galaxy.panel.task')}</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setSelectedTaskId(null)
+              }}
+              className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-300 hover:bg-white/20"
+            >
+              {t(lang, 'galaxy.detail.close')}
+            </button>
+          </div>
+          <div className="space-y-2 text-[12px]">
+            <div className="text-base font-medium text-white">{selectedTask.title}</div>
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full" style={{ background: VISUAL_DOT[taskVisualState(selectedTask, now)] }} />
+              <span className="text-slate-300">{statusLabel(taskVisualState(selectedTask, now))}</span>
+            </div>
+            <div className="text-slate-400">
+              {t(lang, 'galaxy.detail.due')}：{formatDue(selectedTask.dueAt, lang)}
+            </div>
+            <div className="text-slate-400">
+              {t(lang, 'galaxy.detail.importance')}：
+              {selectedTask.importance === 'important'
+                ? t(lang, 'task.list.important')
+                : t(lang, 'task.list.not_important')}
+            </div>
+            <div className="text-slate-400">
+              {t(lang, 'galaxy.detail.category')}：
+              {selectedTask.category === 'research'
+                ? t(lang, 'task.editor.category_research')
+                : selectedTask.category === 'work'
+                ? t(lang, 'task.editor.category_work')
+                : t(lang, 'task.editor.category_life')}
+            </div>
+            {selectedTask.notes ? (
+              <div className="text-slate-400">
+                {t(lang, 'galaxy.detail.notes')}：{selectedTask.notes}
+              </div>
+            ) : null}
+            {onOpenTask ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onOpenTask(selectedTask)
+                }}
+                className="mt-1 w-full rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20"
+              >
+                {t(lang, 'galaxy.detail.edit')}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : selectedProject ? (
+        <div className="absolute bottom-4 left-4 top-16 w-72 overflow-y-auto rounded-xl bg-slate-900/90 p-4 text-slate-100 shadow-xl ring-1 ring-white/10 backdrop-blur">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-semibold">{t(lang, 'galaxy.panel.project')}</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setSelectedProjectId(null)
+              }}
+              className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-300 hover:bg-white/20"
+            >
+              {t(lang, 'galaxy.detail.close')}
+            </button>
+          </div>
+          <div className="mb-2 text-base font-medium text-white">{selectedProject.title}</div>
+          {projectTaskList.length === 0 ? (
+            <p className="text-[12px] text-slate-400">{t(lang, 'galaxy.detail.empty')}</p>
+          ) : (
+            <div className="space-y-0.5">
+              {projectTaskList.map((task) => (
+                <TaskRow key={task.id} task={task} />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : focusGoal ? (
+        <div className="absolute bottom-4 left-4 top-16 w-72 overflow-y-auto rounded-xl bg-slate-900/90 p-4 text-slate-100 shadow-xl ring-1 ring-white/10 backdrop-blur">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-semibold">{t(lang, 'galaxy.panel.goal')}</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                clearSelection()
+              }}
+              className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-300 hover:bg-white/20"
+            >
+              {t(lang, 'galaxy.detail.close')}
+            </button>
+          </div>
+          <div className="mb-3 text-base font-medium text-white">{focusGoal.title}</div>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <Metric
+              label={t(lang, 'galaxy.metric.in_progress')}
+              value={goalCounts.in_progress}
+              tone="neutral"
+            />
+            <Metric
+              label={t(lang, 'galaxy.metric.todo')}
+              value={goalCounts.todo}
+              tone="info"
+            />
+            <Metric
+              label={t(lang, 'galaxy.metric.completed')}
+              value={goalCounts.completed}
+              tone="positive"
+            />
+            <Metric
+              label={t(lang, 'galaxy.metric.overdue')}
+              value={goalCounts.overdue}
+              tone="warn"
+            />
+            <Metric
+              label={t(lang, 'galaxy.metric.breach')}
+              value={goalCounts.breach}
+              tone="danger"
+            />
+          </div>
+          {goalTaskList.length === 0 ? (
+            <p className="text-[12px] text-slate-400">{t(lang, 'galaxy.detail.empty')}</p>
+          ) : (
+            <div className="space-y-0.5">
+              {goalTaskList.map((task) => (
+                <TaskRow key={task.id} task={task} />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {/* Legend (bottom) */}
+      <div className="absolute bottom-4 right-4 w-60 rounded-xl bg-slate-900/85 px-4 py-3 text-xs text-slate-200 shadow-lg ring-1 ring-white/10 backdrop-blur">
         <div className="mb-2 font-semibold text-slate-100">{t(lang, 'galaxy.legend_title')}</div>
-        <div className="mb-1 flex items-center gap-2">
-          <span className="inline-block h-3 w-3 rounded-full" style={{ background: '#7dd3fc' }} />
-          {t(lang, 'galaxy.legend_paused')}
-        </div>
-        <div className="mb-1 flex items-center gap-2">
-          <span className="inline-block h-3 w-3 rounded-full" style={{ background: '#fde68a' }} />
-          {t(lang, 'galaxy.legend_completed')}
-        </div>
-        <div className="mb-1 flex items-center gap-2">
-          <span className="inline-block h-3 w-3 rounded-full" style={{ background: '#94a3b8' }} />
-          {t(lang, 'galaxy.legend_free')}
+          <div className="mb-3">
+            <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-400">{t(lang, 'galaxy.legend_tasks')}</div>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-full" style={{ background: '#fbbf24' }} />
+              {t(lang, 'galaxy.legend_in_progress')}
+            </div>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-full border-2 border-dashed" style={{ background: '#cbd5e1', borderColor: '#fbbf24' }} />
+              {t(lang, 'galaxy.legend_todo')}
+            </div>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-full" style={{ background: '#b45309', boxShadow: '0 0 0 2px #fbbf24' }} />
+              {t(lang, 'galaxy.legend_completed')}
+            </div>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-full" style={{ background: '#ef4444', boxShadow: '0 0 0 2px #ef4444' }} />
+              {t(lang, 'galaxy.legend_overdue')}
+            </div>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-full" style={{ background: '#4b5563' }} />
+              {t(lang, 'galaxy.legend_breach')}
+            </div>
+          </div>
+        <div className="border-t border-white/10 pt-2">
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-400">{t(lang, 'galaxy.legend_planets')}</div>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="inline-block h-3 w-3 rounded-full" style={{ background: '#94a3b8' }} />
+            {t(lang, 'galaxy.legend_paused')}
+          </div>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="inline-block h-3 w-3 rounded-full" style={{ background: '#94a3b8' }} />
+            {t(lang, 'galaxy.legend_free')}
+          </div>
         </div>
         <div className="mt-2 border-t border-white/10 pt-2 text-[11px] leading-relaxed text-slate-400">
-          {t(lang, 'galaxy.legend_star')}
+          {t(lang, 'galaxy.hint_default')}
         </div>
       </div>
 
